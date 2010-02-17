@@ -383,8 +383,8 @@ class CSVArray:
                self.rows[x][i]=v
                self.cols[i][x]=v;             
         else:
-            self.rows[self.xoffset+x][self.yoffset+y]=val
-            self.cols[self.yoffset+y][self.xoffset+x]=val
+            self.rows[self.xoffset+int(x)][self.yoffset+int(y)]=val
+            self.cols[self.yoffset+int(y)][self.xoffset+int(x)]=val
     
     def setRow(self,x,val):
         self.set(x,None,val)
