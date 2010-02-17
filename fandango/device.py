@@ -150,9 +150,7 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
     
     def check_Properties(self,props_list):
         """ It verifies that all properties has been initialized """
-        print 'In check_Properties ...'
-        if not all([hasattr(self,p) for p in props_list]): return False
-        else: return all([getattr(self,p) for p in props_list])        
+        return all([getattr(self,p,None) for p in props_list])        
     
     def get_device_properties(self,myclass):
         self.debug('In Dev4Tango.get_device_properties(%s) ...' % str(myclass))
@@ -170,6 +168,7 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
                     missing_properties[k]=value
         if missing_properties:
             try:
+                self.info('In Dev4Tango.get_device_properties(%s): initializing default property values: %s' % (self.get_name(),missing_properties))
                 TangoDatabase.put_device_property(self.get_name(),missing_properties)
             except Exception,e:
                 print 'Exception in Dev4Tango.get_device_properties():\n'+str(e)
