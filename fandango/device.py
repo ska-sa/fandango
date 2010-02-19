@@ -243,13 +243,15 @@ class DevChild(Dev4Tango):
             Wait: time between DeviceProxy.ping() executions    
             ForcePolling: forces polling in all attributes listed, it can be directly the period to force
         call this method once the properties self.ParentName and self.ParentAttributes has been verified """
-        print "In %s.init_DevChild ..." % self.get_name()
         if not self.check_Properties(['ParentName','ParentAttributes']) and all([ParentName,ParentAttributes]):
             self.ParentName=ParentName
             self.ParentAttributes=ParentAttributes
+        print "In %s.init_DevChild(%s,%s) ..." % (self.get_name(),self.ParentName,self.ParentAttributes)            
+        
         EventReceivers[self.get_name()]=self
         #The eventHook is not being used, push_event is called by default and must be redefined
         #self.EventHook=EventHook
+        
         self.dp=None
         self.dp_event=threading.Event()
         self.dp_stopEvent=threading.Event()
@@ -271,8 +273,6 @@ class DevChild(Dev4Tango):
         
         self.check_dp_thread=threading.Thread(None,self.check_ParentProxy,'check_dp')
         self.check_dp_thread.setDaemon(True)
-        self.GARBANZO = None        
-        #self.check_dp_thread.start()
         
     def delete_device(self):
         print "[Device delete_device method] for DevChild"
@@ -282,11 +282,11 @@ class DevChild(Dev4Tango):
         
         
     def always_executed_hook(self):
-        self.info('In DevChiled.always_executed_hoot()')
+        self.info('In DevChild.always_executed_hook()')
         if hasattr(self,'ForceParentPolling') and self.ForceParentPolling and not self.ParentPolledAttributes:
             self.force_ParentAttributes_polling()
         if not self.check_dp_thread.isAlive():
-            self.info('In DevChiled.always_executed_hook(): CheckProxy thread is not Alive!')
+            self.info('In DevChild.always_executed_hook(): CheckProxy thread is not Alive!')
             self.check_dp_thread.start()
         
     def comms_report(self):        
@@ -303,13 +303,11 @@ class DevChild(Dev4Tango):
         #signal.signal(signal.SIGABRT,self.delete_device)
         #signal.signal(signal.SIGKILL,self.delete_device)
         while not self.dp_stopEvent.isSet():
-            self.info('*'*80)
-            self.info('in check_ParentProxy, ...')
-            self.info('*'*80)
+            self.info('*'*20 + 'in check_ParentProxy, ...'+'*'*20 )
             #The dp_event.wait(60) is done at the end of the loop
             try:
                 self.dp_lock.acquire(False)
-                if self.get_state()==PyTango.DevState.UNKNOWN:
+                if self.get_state()==PyTango.DevState.UNKNOWN: #If the device is not connected to parent, then connection is restarted and attributes subscribed
                     self.warning('in check_ParentProxy, self.DevState is UNKNOWN')
                     try:
                         self.dp = PyTango.DeviceProxy(self.ParentName)
@@ -325,8 +323,8 @@ class DevChild(Dev4Tango):
                         self.error('EXCEPTION in check_ParentProxy():, %s Proxy Initialization failed! %s'%(self.ParentName,getLastException()))
                         self.set_state(PyTango.DevState.UNKNOWN)                    
                         self.dp_errors+=1
-                        #del self.dp; self.dp=None
-                else:
+
+                else: #If the device was already connected, timestamp for attributes is verified
                     try:
                         self.dp.ping()
                         self.check_dp_attributes_epoch()
@@ -335,21 +333,21 @@ class DevChild(Dev4Tango):
                         self.set_state(PyTango.DevState.UNKNOWN)
                         self.dp_errors+=1
                         #del self.dp; self.dp=None
+                self.info('*'*20 + 'in check_ParentProxy, end of loop'+'*'*20 )                        
             except Exception,e:
                 self.error('Something failed in check_ParentProxy()!: %s'%traceback.format_exc)
             finally:
                 self.dp_lock.release()
                 self.dp_event.wait(self.dp_wait)
-        self.info('*'*80)
-        self.info('check_ParentProxy, THREAD EXIT!')
-        self.info('*'*80)
+        self.info('*'*20 + 'check_ParentProxy, THREAD EXIT!'+'*'*20 )                        
         #if self.dp: del self.dp
         
     def getParentProxy(self):
         return self.Parent
         
     def check_dp_attributes(self):
-        self.info("In check_dp_attributes ...")
+        """ This method subscribes to the attributes of the Parent device, it is executed only at reconnecting. """
+        self.info("In check_dp_attributes(%s)"%self.ParentAttributes)
         attrs = self.dp.get_attribute_list()
         for att in [pa.lower() for pa in self.ParentAttributes]:
             if att not in [a.lower() for a in attrs]:
@@ -377,8 +375,9 @@ class DevChild(Dev4Tango):
                     # CONFIGURING EVENTS
                     #
                     att_name = att if len(att.split('/'))>2 else ('/'.join([self.ParentName,att])).lower()
+                    self.debug('In check_dp_attributes(...): checking %s' % att_name)
                     if not att_name in EventsList.keys():
-                        self.info('check_dp_attributes: subscribing event for %s'%att_name)
+                        self.info('In check_dp_attributes: subscribing event for %s'%att_name)
                         EventsList[att_name] = TAttr(att_name)
                         EventsList[att_name].receivers.append(self.get_name())
                         if 'CHANGE_EVENT' not in dir(PyTango.EventType): PyTango.EventType.CHANGE_EVENT = PyTango.EventType.CHANGE
@@ -404,15 +403,17 @@ class DevChild(Dev4Tango):
                         #    else: 
                         #        AttributesList[dev_name]=EventsList[att_name].attr_value.value
                 else:
+                    self.info('In check_dp_attributes: attribute %s is not polled and will be not managed by callbacks, use check_dp_attributes_epoch instead'%att)
                     #
                     # HERE POLLING SHOULD BE CONFIGURED
                     #
                     pass
             except Exception,e:
-                self.error('Something failed in check_dp_attributes()!: %s'%traceback.format_exc)
+                self.error('Something failed in check_dp_attributes()!: %s'%traceback.format_exc())
                 raise e
             finally:
                 GlobalCallback.lock.release()
+        self.info("Out of check_dp_attributes ...")
             
     def getParentState(self,dev_name=None):
         dev_name = dev_name or self.ParentName
@@ -472,23 +473,21 @@ class DevChild(Dev4Tango):
             self.errors=errors
             
     def check_dp_attributes_epoch(self):
-        print '-'*80
-        self.info('In check_dp_attributes_epoch() ...')
-        print '-'*80
+        """ This method is executed periodically once the Parent device have been connected. """
+        self.info('In check_dp_attributes_epoch(%s)' % self.last_updates.keys())
         now = time.time()
         for k,v in self.last_updates.items():
-            self.debug('Last update of %s attribute was at %s'%(k,time.ctime(v)))
+            self.debug('-> Last update of %s attribute was at %s'%(k,time.ctime(v)))
             if v < now-self.dp_wait: #If the last_update of the attribute is too old, it forces an error event
-                print '*'*80
-                print 'FORCING EVENT FOR ATTRIBUTE %s, after %s seconds delay'%(k,str(v-now))
-                print '*'*80
+                self.info('='*10+'> FORCING EVENT FOR ATTRIBUTE %s, after %s seconds delay'%(k,str(v-now)))
                 try:
                     GlobalCallback.lock.acquire()
                     #This is a recursive call, the push_event will schedule a future forceAttributeReading
                     event = self.forcedEvent(self.ParentName,self.ParentName+'/'+k,None,True,[
                         {'reason':'DevChild_PushEventForced','desc':'Attribute not updated in the last %s seconds'%self.dp_wait,'origin':'DevChild.check_dp_attributes_epoch'}])
                     self.push_event(event)
-                except Exception,e: raise e
+                except Exception,e: 
+                    self.error('Error in check_dp_attributes_epoch(%s):\n%s' % (k,traceback.format_exc()))
                 finally: GlobalCallback.lock.release()
         pass
 
