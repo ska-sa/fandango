@@ -41,16 +41,17 @@ from random import randrange
 import socket
 
 import PyTango
-#import objects
 
-from tau.core import TauManager
-from tau.core.utils import Object
-from tau.core.utils.containers import CaselessDefaultDict,CaselessDict
+from objects import Object
+from dicts import CaselessDefaultDict,CaselessDict
 
 USE_TAU = False
 if USE_TAU:
+    from tau.core import TauManager
     from tau.core.utils.log import Logger
     Logger.setLogLevel(Logger.Info)
+    #from tau.core.utils import Object
+    #from tau.core.utils.containers import CaselessDefaultDict,CaselessDict
 else:
     from log import Logger
 

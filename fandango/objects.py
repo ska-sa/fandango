@@ -131,7 +131,7 @@ class Object(object):
         Multiple __init__ calls with unnamed arguments is hard to manage: 
             All the _args values will be assigned to non-keyword args
         e.g:
-            from object import Object
+            from objects import Object
             
             class A(Object):
                 def __init__(self,a=2):
