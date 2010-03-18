@@ -376,14 +376,14 @@ class ServersDict(CaselessDict,Object):
          [dev.poll_attribute(attr,3000) for attr in attrs]
      </pre>
     '''
-    def __init__(self,pattern='',klass='',devs_list='',servers_list='',hosts='',loadAll=False):
+    def __init__(self,pattern='',klass='',devs_list='',servers_list='',hosts='',loadAll=False,log='INFO'):
         ''' def __init__(self,pattern='', klass='',devs_list='',servers_list=''):
         The ServersDict can be initialized using any of the three argument lists or a wildcard for Database.get_server_list(pattern) 
         ServersDict('*') can be used to load all servers in database
         '''
         self.call__init__(CaselessDict,self)        
         self.log = Logger('ServersDict')
-        self.log.setLogLevel('INFO')
+        self.log.setLogLevel(log)
         
         ## proxies will keep a list of persistent device proxies
         self.proxies = ProxiesDict()
@@ -783,7 +783,9 @@ class ServersDict(CaselessDict,Object):
                 self.log.warning('The server %s Start couldnt be verified after %s seconds'%(s_name,(t1-t0)))
             else:
                 self.log.info('The server %s Start verified after %s seconds'%(s_name,(t1-t0)))             
-            if host: self.proxies['tango/admin/%s'%host].UpdateServersInfo()   
+            if host and 'tango/admin/%s'%host in self.proxies:
+                try: self.proxies['tango/admin/%s'%host].UpdateServersInfo()   
+                except Exception,e: self.log.error('Unable to update %s Starter: %s'%(host,e))
         return done
             
     def start_all_servers(self): 
