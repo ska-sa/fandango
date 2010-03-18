@@ -40,8 +40,13 @@ def shell_command(*commands, **keywords):
     elif split: return result.split('\n')
     else: return result
         
-        
-        
+def KillEmAll(klass):
+    processes = shell_command('ps uax').split('\n')
+    processes = [s for s in processes if '%s'%(klass) in s]
+    for a in processes:
+        print 'Killing %s' % a
+        pid = a.split()[1]
+        shell_command('kill -9 %s'%pid)        
         
 def desktop_switcher(period,event=None,iterations=2):
     """ It uses wmctrl to switch between all desktops with a period as specified.
