@@ -50,5 +50,5 @@ except: print 'fandango: Unable to import servers module'
 
 RELEASE = (7,0,0)
 
-__all__ = ['dicts','excepts','log','object','db','dynamic','callbacks','arrays','servers']
+__all__ = ['dicts','excepts','log','object','db','dynamic','callbacks','arrays','servers','linos']
 #print 'module reloaded'
