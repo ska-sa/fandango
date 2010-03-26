@@ -91,6 +91,13 @@ exLogger = log.Logger()
 def getLastException():
     return str(traceback.format_exc())
 
+def get_exception_line(as_str=False):
+    ty,e,tb = sys.exc_info()
+    file,line = tb[-1][:2] if tb else ('',0)
+    result = (file,line,tb)
+    if as_str: return '%s[%d]: %s!'%result
+    else: return result
+
 def getPreviousExceptions(limit=0):
     """
     sys.exc_info() returns : type,value,traceback
