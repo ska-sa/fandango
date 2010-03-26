@@ -283,7 +283,7 @@ class DevChild(Dev4Tango):
         
     def always_executed_hook(self):
         self.info('In DevChild.always_executed_hook()')
-        if hasattr(self,'ForceParentPolling') and self.ForceParentPolling and not self.ParentPolledAttributes:
+        if self.get_state()!=PyTango.DevState.UNKNOWN and hasattr(self,'ForceParentPolling') and self.ForceParentPolling and not self.ParentPolledAttributes:
             self.force_ParentAttributes_polling()
         if not self.check_dp_thread.isAlive():
             self.info('In DevChild.always_executed_hook(): CheckProxy thread is not Alive!')
@@ -303,6 +303,7 @@ class DevChild(Dev4Tango):
         #signal.signal(signal.SIGABRT,self.delete_device)
         #signal.signal(signal.SIGKILL,self.delete_device)
         while not self.dp_stopEvent.isSet():
+            #print '*'*20 + 'in check_ParentProxy, ...'+'*'*20
             self.info('*'*20 + 'in check_ParentProxy, ...'+'*'*20 )
             #The dp_event.wait(60) is done at the end of the loop
             try:
@@ -310,6 +311,8 @@ class DevChild(Dev4Tango):
                 if self.get_state()==PyTango.DevState.UNKNOWN: #If the device is not connected to parent, then connection is restarted and attributes subscribed
                     self.warning('in check_ParentProxy, self.DevState is UNKNOWN')
                     try:
+                        if not TangoDatabase.get_device_exported(self.ParentName):
+                            raise Exception,'%s device is not exported!'%self.ParentName
                         self.dp = PyTango.DeviceProxy(self.ParentName)
                         self.Parent = self.dp #Parent is an Alias for the device proxy
                         self.dp.set_timeout_millis(1000)
