@@ -158,12 +158,12 @@ class FriendlyDB(log.Logger):
         else:
             return self.table2dicts(what.split(','),result)
    
-    def getTables(self):
+    def getTables(self,load=False):
         ''' Initializes the keys of the tables dictionary and returns these keys. '''
-        if not self.tables:
+        if load or not self.tables:
             q=self.Query('show tables',False)
             [self.tables.__setitem__(t[0],[]) for t in self.tuples2lists(q.fetchall())]
-        return self.tables.keys()
+        return sorted(self.tables.keys())
    
     def getTableCols(self,table):
         ''' Returns the column names for the given table, and stores these values in the tables dict. '''
