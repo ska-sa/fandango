@@ -51,7 +51,7 @@ import MySQLdb,sys
 class FriendlyDB(log.Logger):
     """ Class for managing the direct access to the database
     """   
-    def __init__(self,db_name,host='',user='',passwd=''):
+    def __init__(self,db_name,host='',user='',passwd='',autocommit=True):
         """ Initialization of MySQL connection """
         self.call__init__(log.Logger,self.__class__.__name__,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
         self.setLogLevel('DEBUG')
@@ -63,6 +63,7 @@ class FriendlyDB(log.Logger):
         self.db_name=db_name
         self.host=host
         self.setUser(user,passwd)
+        self.autocommit = autocommit
         self.renewMySQLconnection()
         self._cursor=None
         self.tables={}
@@ -80,12 +81,22 @@ class FriendlyDB(log.Logger):
         self.user=user
         self.passwd=passwd
         
+    def setAutocommit(self,autocommit):
+        try:
+            self.db.autocommit(autocommit)
+            self.autocommit = autocommit
+        except Exception,e:
+            self.error('Unable to set MySQLdb.connection.autocommit to %s'%autocommit)
+            raise Exception,e
+        
+        
     def renewMySQLconnection(self):
         try:
             if hasattr(self,'db') and self.db: 
                 self.db.close()
                 del self.db
             self.db=MySQLdb.connect(db=self.db_name,host=self.host,user=self.user,passwd=self.passwd)
+            self.db.autocommit(self.autocommit)
         except Exception,e:
             self.error( 'Unable to create a MySQLdb connection to "%s"@%s.%s: %s'%(self.user,self.host,self.db_name,str(e)))
             raise Exception,e
