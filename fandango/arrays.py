@@ -187,7 +187,7 @@ class CSVArray:
             if not delimiter:
                 index = self.header if self.header is not None else self.xoffset
                 sample = flines[index]
-                print 'Dialect read from sample line (%d): %s' % (index,sample)
+                #print 'Dialect read from sample line (%d): %s' % (index,sample)
                 self.dialect = csv.Sniffer().sniff(sample)
                 print 'Dialect extracted is %s'%(str(self.dialect.__dict__))
                 readed = [r for r in csv.reader(flines, self.dialect)]
@@ -209,13 +209,13 @@ class CSVArray:
                     rows.append(row2)
                 #Correcting initial header and offset when previous lines are being erased
                 else: #The row is discarded
-                    print 'removing line %d'%i
+                    #print 'removing line %d'%i
                     if i<=self.header: 
                         self.header-=1
-                        print 'header updated to %d'%self.header
+                        #print 'header updated to %d'%self.header
                     if i<=self.xoffset: 
                         self.xoffset-=1
-                        print 'xoffset updated to %d'%self.xoffset
+                        #print 'xoffset updated to %d'%self.xoffset
                 i=i+1
             #print 'Header line is %d: %s' % (len(rows[self.header]),rows[self.header])
             ncols = max(len(row) for row in rows) if rows else 0
@@ -253,37 +253,37 @@ class CSVArray:
         TODO: This method seems quite buggy, a refactoring should be done
         """
         print 'CSVArray.resize(',x,',',y,'), actual size is (%d,%d)' % (self.nrows,self.ncols)
-        if len(self.rows)!=self.nrows: 'The Size of the Array has been corrupted!'
-        if len(self.cols)!=self.ncols: 'The Size of the Array has been corrupted!'
+        if len(self.rows)!=self.nrows: print 'The Size of the Array has been corrupted!'
+        if len(self.cols)!=self.ncols: print 'The Size of the Array has been corrupted!'
         
         if x<self.nrows:
-            print 'Deleting %d rows' % (self.nrows-x)
+            #print 'Deleting %d rows' % (self.nrows-x)
             self.rows = self.rows[:x]
             for i in range(self.ncols):
                 self.cols[i]=self.cols[i][0:x]  
         
         elif x>self.nrows:
-            print 'Adding %d new rows' % (x-self.nrows)
+            #print 'Adding %d new rows' % (x-self.nrows)
             for i in range(x-self.nrows):
                 self.rows.append(y*[''])
             for i in range(self.ncols):
                 self.cols[i]=self.cols[i]+['']*(x-self.nrows)
         self.nrows = x
-        if len(self.rows)!=self.nrows: 'The Size of the Array Rows has been corrupted!'
+        if len(self.rows)!=self.nrows: print 'The Size of the Array Rows has been corrupted!'
         
         if y<self.ncols:
-            print 'Deleting %d columns' % (self.ncols-y)
+            #print 'Deleting %d columns' % (self.ncols-y)
             self.cols = self.cols[:y]
             for i in range(self.nrows):
                 self.rows[i]=self.rows[i][0:y]
         elif y>self.ncols:
-            print 'Adding %d new columns' % (y-self.ncols)
+            #print 'Adding %d new columns' % (y-self.ncols)
             for i in range(y-self.ncols):
                 self.cols.append(x*[''])
             for i in range(self.nrows):
                 self.rows[i]=self.rows[i] + (y-len(self.rows[i]))*['']
         self.ncols = y
-        if len(self.cols)!=self.ncols: 'The Size of the Array Columns has been corrupted!'
+        if len(self.cols)!=self.ncols: print 'The Size of the Array Columns has been corrupted!'
         
         print 'CSVArray.rows dimension is now ',len(self.rows),'x',max([len(r) for r in self.rows])
         print 'CSVArray.cols dimension is now ',len(self.cols),'x',max([len(c) for c in self.cols])
