@@ -730,7 +730,7 @@ class ServersDict(CaselessDict,Object):
     refresh = test_servers 
     update_states = test_servers
 
-    def start_servers(self,servers_list,host='',wait=10):
+    def start_servers(self,servers_list,host='',wait=10.):
         '''def server_Start(self,servers_list,host='',wait=3):
         Starting a list of servers or a single one in the given host(argument could be an string or a list)
         The wait parameter forces to wait several seconds until the device answers to an State command.
@@ -747,7 +747,11 @@ class ServersDict(CaselessDict,Object):
             
         full_servers_list = []
         for s_name in servers_list:
-            if not host: self.get_server_level(s_name)
+            if not host: 
+                try:
+                    if s_name in self: self[s_name].init_from_db(self.db)
+                    self.get_server_level(s_name)
+                except: pass
             host = host or self[s_name].host or socket.gethostname()
             host = host.split('.')[0].strip() 
             level = s_name in self and self[s_name].level or 0
