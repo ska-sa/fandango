@@ -750,12 +750,14 @@ class ServersDict(CaselessDict,Object):
             if not host: 
                 try:
                     if s_name in self: self[s_name].init_from_db(self.db)
-                    self.get_server_level(s_name)
-                except: pass
-            host = host or self[s_name].host or socket.gethostname()
-            host = host.split('.')[0].strip() 
-            level = s_name in self and self[s_name].level or 0
-            full_servers_list.append((level,host,s_name))
+                    self[s_name].get_server_level()
+                except Exception,e: 
+                    self.log.warning('start/stop_servers(%s): Unable to retrieve host/level information: %s'%(s_name,e))
+            s_host = host or self[s_name].host or socket.gethostname()
+            s_host = s_host.split('.')[0].strip() 
+            s_level = s_name in self and self[s_name].level or 0
+            full_servers_list.append((s_level,s_host,s_name))
+            self.log.info('Server added to list: %s'%[s_level,s_host,s_name])
             
         for level,host,s_name in sorted(full_servers_list):
             t0 = time.time()
@@ -793,7 +795,7 @@ class ServersDict(CaselessDict,Object):
         return done
             
     def start_all_servers(self): 
-        return self.start_servers(self.keys())
+        return self.start_servers(sorted(self.keys()))
         
     #def server_StartNForClass(self,c_name,N,wait=3):
         #'''def server_StartNForClass(self,c_name,N,wait=3):Starts N servers of a given Class'''
@@ -828,7 +830,13 @@ class ServersDict(CaselessDict,Object):
                 self.log.error('Exception in server_Stop(%s): %s'%(server_name,str(e)))
         
         hosts = [self[s].host for s in servers_list if s in self]
-        [self.proxies['tango/admin/%s'%host].UpdateServersInfo() for host in hosts if host]
+        for host in hosts:
+            if host:
+                try:
+                    starter = self.proxies['tango/admin/%s'%host]
+                    starter.UpdateServersInfo()
+                except Exception,e:
+                    self.log.warning('Unable to contact with Starter in host %s: %s' % (host,e))
         return done
             
     def stop_all_servers(self): 
@@ -898,7 +906,12 @@ class ServersDict(CaselessDict,Object):
     
     def get_server_level(self,server_name):
         """ It executes a DbGetServerInfo command in dbserver device. """
-        name,host,mode,level = self.get_db_device().DbGetServerInfo(server_name)
+        
+        ##commented because failed with C++ pointer exceptions!
+        #name,host,mode,level = self.get_db_device().DbGetServerInfo(server_name)
+        #
+        ssi = self.db.get_server_info(server_name)
+        host,level = ssi.host,ssi.level
         if server_name in self: self[server_name].update_level(host,level)
         return host.split('.')[0].strip(),level
         
