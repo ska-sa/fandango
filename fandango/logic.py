@@ -35,7 +35,12 @@
 ###########################################################################
 """
 
+import operator
+from functools import partial
+
+######################################################3
 ## Some miscellaneous logic methods
+######################################################3
 
 def first(seq):
     """Returns first element of sequence"""
@@ -45,21 +50,67 @@ def first(seq):
         try: 
             return seq.next()
         except:
-            raise e
-    pass
+            raise e #if .next() also doesn't work throw unsubscriptable exception
+    return
 
-def last(seq):
+def last(seq,MAX_SEQ=1000):
     """Returns last element of sequence"""
-    return seq[-1]
+    try:
+        return seq[-1]
+    except Exception,e:
+        try: 
+            n = seq.next()
+        except: 
+            raise e #if .next() also doesn't work throw unsubscriptable exception
+        try:
+            for i in range(1,MAX_SEQ):
+                n = seq.next()
+            if i>(MAX_SEQ-1):
+                raise Exception,'SequenceLongerThan%d'%MAX_SEQ
+        except StopIteration,e: 
+            return n
+    return
 
-def ormap(seq):
+def anyone(seq):
     """Returns first that is true or last that is false"""
     for s in seq:
         if s: return s
-    return seq[-1]
+    return s
 
-def andmap(seq):
+def everyone(seq):
     """Returns last that is true or first that is false"""
     for s in seq:
         if not s: return s
-    return seq[-1]
+    return s
+        
+######################################################3
+## Methods for identifying types        
+######################################################3
+        
+def isString(seq):
+    if isinstance(seq,str): return True
+    tt = str(type(seq))
+    return 'str' in tt or 'QString' in tt
+    
+def isNumber(seq):
+    return operator.isNumberType(seq)
+    
+def isSequence(seq):
+    """ It excludes Strings and dictionaries """
+    if any(isinstance(seq,t) for t in (list,set,tuple)): return True
+    if isString(seq): return False
+    if hasattr(seq,'items'): return False
+    if hasattr(seq,'__iter__'): return True
+    return False
+    
+def isDictionary(seq):
+    """ It includes dicts and also nested lists """
+    if isinstance(seq,dict): return True
+    if hasattr(seq,'items') or hasattr(seq,'iteritems'): return True
+    if seq and isSequence(seq) and isSequence(seq[0]):
+        if seq[0] and not isSequence(seq[0][0]): return True #First element of tuple must be hashable
+    return False
+    
+def isIterable(seq):
+    """ It includes dicts and listlikes but not strings """
+    return hasattr(seq,'__iter__') and not isString(seq)
