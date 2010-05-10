@@ -68,11 +68,11 @@ def self_locked(func,reentrant=True):
             setattr(self,'trace',False)
         self.lock.acquire()
         try: 
-            if self.trace: print "locked: %s"%self.lock
+            #if self.trace: print "locked: %s"%self.lock
             result = func(self,*args,**kwargs)
         finally: 
             self.lock.release()
-            if self.trace: print "released: %s"%self.lock
+            #if self.trace: print "released: %s"%self.lock
         return result       
     return lock_fun
             
@@ -122,34 +122,39 @@ class ThreadDict(dict):
     @deprecated now in tau.core.utils.containers
     '''
     
-    def __init__(self,other=None,read_method=None,write_method=None,timewait=0.1,threaded=True):
+    def __init__(self,other=None,read_method=None,write_method=None,timewait=0.1,threaded=True,trace=False):
         self.read_method = read_method
         self.write_method = write_method
         self.timewait = timewait
         self.threaded = threaded
         self._threadkeys = []
-        self.trace = False
+        self.trace = trace
         self.last_update = 0
         self.last_cycle_start = 0
         self.parent = type(self).mro()[1] #equals to self.__class__.__base__ or type(self).__bases__[0]
     
-    def tracer(self,text): print text
+    def tracer(self,text,level=0): 
+        #if isinstance(self.trace,int) and level<self.trace: 
+        print text
         
+    #@self_locked
     def start(self):
-        import threading
-        print 'Starting ThreadDict ...'
         if not self.threaded:
-            print 'This Dict has no Thread!'
+            print 'ThreadDict.start(): This Dict has no Thread!'
             return
         if hasattr(self,'_Thread') and self._Thread and self._Thread.isAlive():
-            print 'ThreadDict.stop() must be executed first!'
+            print 'ThreadDict.start(): ThreadDict.stop() must be executed first!'
             return
+        print 'In ThreadDict.start(), keys are: %s' % self.threadkeys()        
+        import threading        
         self.event = threading.Event()
         self.event.clear()
         self._Thread = threading.Thread(target=self.run)
         self._Thread.setDaemon(True)
         self._Thread.start()
         self.tracer('ThreadDict started!')
+        
+    #@self_locked        
     def stop(self):
         print 'Stopping ThreadDict ...'
         if self.threaded and hasattr(self,'event'): self.event.set()
@@ -167,7 +172,7 @@ class ThreadDict(dict):
         self.tracer('In ThreadDict.run()')
         while not self.event.isSet():
             keys = self.threadkeys()
-            if self.trace: print 'ThreadDict keys are %s'%keys
+            #if self.trace: print 'ThreadDict keys are %s'%keys
             for k in keys:
                 if self.trace: self.tracer('ThreadDict::run(): updating %s'%str(k))
                 try:
@@ -178,8 +183,14 @@ class ThreadDict(dict):
                         if self.read_method:
                             value = self.read_method(k)
                             self.__setitem__(k,value,hw=False)
+                except Exception,e:
+                    if self.trace:
+                        print '!'*80
+                        print traceback.format_exc()
+                    raise e
                 finally:
-                    self.event.wait(self.timewait)
+                    if self.event.isSet(): break
+                    else: self.event.wait(self.timewait)
                 if self.event.isSet(): break
             timewait = self.get_timewait()
             self.event.wait(timewait)
@@ -204,6 +215,7 @@ class ThreadDict(dict):
     def append(self,key,value=None): 
         if not dict.has_key(self,key): self.parent.__setitem__(self,key,value)
         if key not in self._threadkeys: self._threadkeys.append(key)
+        if self.trace: self.tracer('ThreadDict.append(%s,%s)'%(key,value))
     
     @self_locked
     def threadkeys(self):
@@ -356,6 +368,303 @@ class DefaultThreadDict(defaultdict_fromkey,ThreadDict):
         defaultdict_fromkey.__init__(self,default_factory)
         ThreadDict.__init__(self,other,read_method,write_method,timewait,threaded)
     pass
+    
+    
+##################################################################################################    
+
+from collections import defaultdict
+class ReversibleDict(object):#dict):
+    """  Dictionary that searches in both directions within a list of tuples acting like a nested dictionary.
+     * Negative indexes and levels are used to reverse the direction of key,values retrieval (i>=0: left-to-right; i<0: rigth-to-left)
+     * Both directions are not exclusive!!! ... search direction is managed by the tuple index sign (+/-)
+     * The _level is always positive, and could relate to both sides of the tuple [+level,-(level-1)][i<0]
+     * When no sublevel is entered, keys() returns both sides of each tuple
+     * Due to this behaviour may be: len(self) < len(self.items())
+     * It inherits from dictionary just to be recognized by isinstance!
+     * keys()[x] != values()[x] ... use .items() or iteritems() when you need to match it
+     * There's no check for duplicate keys, if there's a duplicate key then the first match is returned
+    
+    :TODO : A nice search algorithm in sorted tables would speed up retrieving a lot
+    
+    dict methods implemeted: 
+        __contains__,__delitem__,__getitem__,__iter__,__len__,__repr__,__setitem__,__str__
+        get,has_key,items,iteritems,iterkeys,itervalues,keys,pop,values
+    NotImplemented: clear,copy,fromkeys,setdefault,update,popitem
+    """
+    
+    DEFAULT = None
+    SORTKEY = lambda s: ord(s[0])%3
+    
+    def __init__(self, table = None, subset = None, index  = None, level = 0, sorted = False, trace = False):
+        """ 
+        :param table: The table must be a list of tuples having all the same length and must be sorted! 
+        :param subset: it will be a list of lines to be searched, the rest will be ignored; used for nesting
+        :param index: the index in tuples to be searched, if None both begin (0) and end (-1) are searched
+        :param level: always a positive value
+        """
+        table,subset,index = table or [], subset or (), index or [] #There are strange problems if persistent types are used as __init__ arguments!?!
+        if isinstance(table,ReversibleDict): table = table.data()
+        elif isinstance(table,dict): table = table.items()
+        #Attributes persistent
+        self._depth = table and len(table[0]) or 0
+        self._table = table or []
+        self._sorted = index or sorted
+        self.trace(trace)
+        if sorted and not index: self._index = self.sort(True)
+        else: self._index = index
+        #Attributes that changed in sub-instances
+        self._level = level #It's always positive!
+        self._subset = subset
+        
+    #def __new__(klass,*args):
+        #return klass(*args)
+    
+    def __len__(self):
+        """ It returns the number of raw lines, not keys or values """
+        return len(self._subset or self._table) 
+    def range(self,full=True):
+        """ And appropiated iterator to check all lines in the table """
+        return self._subset or range(full and -len(self._table) or 0,len(self._table))
+    
+    def __repr__(self):
+        return '{'+',\n'.join('\t%s%s:%s'%(k,'',v) for k,v in self.iteritems())+'}'
+    def __str__(self):
+        return  self.__repr__()
+    
+    def trace(self,val=None):
+        if val in (True,False): self._trace = val
+        return self._trace
+        
+    def sort(self,update=False):
+        """ creates indexes of the keys at each level using the self.SORTKEY method 
+        for each level there's a dictionary {SORTKEY(s):[lines where SORTKEY(key)==SORTKEY(s)]}
+        SORTKEY is used instead of key to improve retrieve times.
+        """
+        if update:
+            self._index = {}
+            for l in range(self._depth):
+                self._index[l] = self._index[-(l+1)] =defaultdict(set)
+                for i in self.range():
+                    self._index[l][self.SORTKEY(self._table[i][l])].add(i)
+            self._sorted = True
+        return self._index
+                
+    def prune(self,filters=[]):
+        """ This method should do a cleanup of all repeated key-chains in both directions (or delete anything matched by filters) """
+        raise Exception,'NotImplemented'
+        
+    def depth(self):
+        return self._depth
+    
+    def data(self):
+        return self._table
+    
+    def size(self):
+        return len(self._table)
+    
+    def sorted(self):
+        return self._sorted
+    
+    def nextlevel(self,i=None):
+        if i is not None and i<0: return self.level(i)-1
+        else: return self._level+1 #(1 if direction>=0 else -1) #Level always positive
+        
+    def prevlevel(self,i=None):
+        if i is not None and i<0: return self.level(i)+1
+        else: return self._level-1 #(1 if directionl>=0 else -1) #Level always positive   
+        
+    #def iterlevel(self):
+        #""" Returns (level,) or if level is None then it will try left-to-right and right-to-left first levels """
+        #return ((0,-1) if self._level is None else (self._level,))
+        
+    def level(self,i = None): 
+        """ The direction depends on the sign of the tuple index """
+        if i is not None and i<0: return -(self._level+1)
+        else: return self._level
+        
+    def last(self):
+        return self.nextlevel()==self.depth()-1
+    
+    def __iter__(self):
+        """ It returns distinct keys """
+        previous = set()
+        for i in self.range():
+            k = self._table[i][self.level(i)]
+            if k in previous: continue
+            previous.add(k)
+            yield k
+        pass
+            
+    def iterkeys(self):
+        return self.__iter__()
+    
+    def keys(self):
+        return set([k for k in self.__iter__()])
+    
+    def keysets(self,key=None):
+        """ It returns a dictionary of {key:[index set]} at actual level. 
+        The sign +/- of the index refers to left-to-right/right-to-left order
+        The level/direcition is not initialized until a key is found by this method.
+        """
+        keys = defaultdict(set)
+        if key is None: #Don't check it at every loop!
+            for i in self.range():
+                [keys[self._table[i][self.level(i)]].add(i) for i in self.range()]
+        else: #Searching for a given key
+            for i in self.range():
+                j = self.level(i)
+                if self._table[i][j]!=key: continue
+                keys[self._table[i][j]].add(i)
+        return keys
+    
+    def itervalues(self):
+        """ It returns values for actual keys """
+        if self.level()==self.depth()-1:
+            for i in self.range():
+                yield self._table[i][self.level(i)]
+        else:
+            for ks in self.keysets().values():
+                yield ReversibleDict(table=self._table,index=self._index,subset=ks,level=self.nextlevel(),trace=self._trace)
+        pass
+            
+    def values(self):
+        return [v for v in self.itervalues()]
+    
+    def iteritems(self):
+        """ returns key,value pairs at self.level() """
+        if self.nextlevel()==self.depth()-1:
+            for i in self.range():
+                yield self._table[i][self.level(i)],self._table[i][self.nextlevel(i)]        #Last key,value pair
+        else:
+            for k,ks in self.keysets().items():
+                yield k,ReversibleDict(table=self._table,index=self._index,subset=ks,level=self.nextlevel(),trace=self._trace)
+        pass
+            
+    def items(self):
+        return [t for t in self.iteritems()]
+    
+    def line(self,i):
+        """ It returns an arranged tuple slice of the selected index of the table 
+        :param i: it must be the RAW (positive or negative) index of the line
+        """
+        if i>self.size(): i = i-2*self.size() #converting to a negative index
+        rightleft = i<0 #left-to-right or right-to-left order
+        t = self._table[i]
+        if not self._level:
+            return tuple(reversed(t)) if rightleft else t
+        else:
+            level = self.level(i)
+            if rightleft: return (t[level],)+tuple(reversed(t[-self._depth:level]))
+            else: return t[level:self._depth]
+        
+    def iterlines(self):
+        """ Instead of returning key,value pairs it returns a tuple with self.depth() values """
+        for i in self.range(full=False):
+            yield self.line(i)
+            
+    def lines(self):
+        """ Instead of returning key,value pairs it returns a tuple with self.depth() values """
+        return [i for i in self.iterlines()]
+    
+    def has_key(self,key):
+        """ Implemented separately of __getitem__ to be more efficient. """
+        for i in self.range(full=True):
+            if self._table[i][self.level(i)]==key: return True
+        return False
+            
+    def __contains__(self, key):
+        return self.has_key(key)
+
+    def get(self, *keys):
+        """Arguments are keys separated by commas, it is a recursive call to __getitem__ """
+        if len(keys)>self._depth: return self.DEFAULT
+        try:
+            v = self[keys[0]]
+            if isinstance(v,ReversibleDict):
+                return v.get(*keys[1:])
+            else: return v
+        except: 
+            return self.DEFAULT
+
+    def __getitem__(self, key,raw=False):
+        """ It scans the dict table in both directions, returning value or a ReversibleDict instance """
+        ks = self.keysets(key=key)
+        if not ks.get(key,[]): raise Exception,'KeyNotFound(%s)'%key
+        if self.nextlevel() == self.depth()-1:
+            i = ks[key].pop()
+            return self._table[i][self.nextlevel(i)] #Returning a first/last element of tuple
+        else:
+            return ReversibleDict(table=self._table,subset=ks[key],index=self._index,level=self.nextlevel(),trace=self._trace) #Returning a ReversibleDict with the subset of tuples that matched previous searches.
+        
+    def set(self, *keys):
+        """ Arguments are values separated by commas, it is a recursive call to __setitem__ """
+        if len(keys)==1 and any(isinstance(keys[0],t) for t in (list,tuple,set)): keys = tuple(keys[0])
+        self[keys[0]] = keys[1:]
+
+    def __setitem__(self, key, value):
+        """ It may accept two ways:
+         * Entering a tuple of length = depth-level
+         * Entering directly the last value (level = depth-1); it will override existing ones!!!
+         * Order will depend of the previously inserted tuples for the same key
+         * If key doesn't exist it will be added as a left-to-right tuple
+        """
+        #print 'In ReversibleDict.__setitem__(%s,%s), level is %s'%(key,value,self.level())
+        
+        #Checking all the conditions for the arguments
+        if not hasattr(value,'__iter__') or isinstance(value,str): value = (value,)
+        elif not isinstance(value,tuple): value = tuple(value)
+        if not len(value): raise Exception,'EmptyTuple!'
+        elif self._table and (len(value))!=self.depth()-self.level()-1: raise Exception,'WrongTupleSize(%s!=%s)' % (len(value),self.depth()-self.level()-1)
+        
+        if self._trace: print 'In ReversibleDict[%s] = %s' % (key,value)
+        #Creating a new table if the dict was empty
+        if not self._table:
+            self._table.append((key,)+value)
+            self._depth = 1+len(value)
+            if self._trace: print 'Creating a table ...'
+        #Check if the key already exist
+        elif self.has_key(key): 
+            if self._trace: print 'Updating a key ...'
+            i = iter(self.keysets(key)[key]).next()
+            if self.last(): #If it's a final leaf the value is overriden
+                self._table[i] = (self._table[i][:self.nextlevel(i)]+value) if i>=0 else (value+self._table[i][self.level(i):])
+            else: #If not the tuple is passed to the next dictionary
+                return self[key].__setitem__(value[0],value[1:])
+                #if i>=0: 
+                #else: return self[key].__setitem__(value[-1],value[:-1])
+                
+        #The key exists but in reversed order (only for root dictionary)
+        elif self.level() in (0,-1) and self.has_key(value[-1]): 
+            if self._trace: print 'Inserting reversed key ...'
+            self[value[-1]]=tuple(reversed(value[:-1]))+(key,)
+            
+        #Adding new keys
+        elif self.level(): 
+            i = iter(self._subset).next()
+            #print 'adding new key %s at level %s, i = %s' % (key,self.level(i),i)
+            if i>=0: self._table.append(self._table[i][:self.level(i)]+(key,)+value)
+            else: self._table.append(tuple(reversed(value))+(key,)+ self._table[i][self.level(i)+1:] ) #+1 because slices are not symmetric!
+            if self._trace: print 'Adding a new key ...'
+        else: 
+            if self._trace: print 'Adding a new line ...'
+            self._table.append((key,)+value)
+
+    def update(self, other):
+        if not other: return
+        if hasattr(other,'iteritems'):
+            [self.set(*t) for t in other.iteritems()]
+        else:
+            [self.set(*t) for t in other]
+
+    def __del__(self):
+        del self._table
+        
+    def __delitem__(self, k):
+        raise Exception,'NotImplemented!'
+        
+    def setdefault(self, key, def_val=None): raise Exception,'NotImplemented!'
+    def fromkeys(self, iterable, value=None): raise Exception,'NotImplemented!'
+    def pop(self, key, def_val=None): raise Exception,'NotImplemented!'        
     
 ##################################################################################################
     
