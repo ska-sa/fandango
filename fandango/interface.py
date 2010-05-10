@@ -89,7 +89,7 @@ def updateChildClassDicts(Child,Parent,Exclude=[]):
                 else: [cattr.__setitem__(k,v) for k,v in pattr.items() if k not in Exclude]
 #updateChildClassDicts(AlbaPLCClass,PyPLCClass)        
         
-def getNewTypeInheritance(name,klass,parent,dikt={}):
+def NewTypeInheritance(name,klass,parent,dikt={}):
     """ Based on NewClass = type('nameOfClass',(bases,),dikt={}) """
     return type(name,(klass,parent),dikt)
 
