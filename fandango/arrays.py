@@ -295,10 +295,10 @@ class CSVArray:
       
     #@Catched
     def get(self,x=None,y=None,head=None,distinct=False,xsubset=[],ysubset=[]):
-        trace=False
         """
         def get(self,x=None,y=None,head=None,distinct=False):
         """
+        trace=False
         result = []
         #if isinstance(y,basestring): head=y
         if type(y)==type('y'): 
@@ -494,7 +494,7 @@ class CSVArray:
                 
     def printArray(self):
         for r in range(len(self.rows)):
-            print r,':','\t'.join([str(e) for e in self.rows[r]])
+            print r,':','\t'.join([str(e or '\t') for e in self.rows[r]])
         #for r in range(len(self.rows)):
             #print r,':','\t'.join([self.cols[c][r] for c in range(len(self.cols))])
     
@@ -510,6 +510,9 @@ def tree2table(tree):
         BB    4
     """
     from collections import deque
+    if not isinstance(tree,dict): #The tree arrived to a leave
+        if any(map(isinstance,2*[tree],(list,tuple))): return [tree]
+        else: return [(tree,)]
     result = []
     for k in sorted(tree.keys()): #K=AA; v = {1:{}}
         v = tree[k]
