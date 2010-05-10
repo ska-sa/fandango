@@ -424,7 +424,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             #Value must be updated after fire Event
             self.dyn_values[aname].update(result,date,quality)
 
-            text_result = type(result) is list and '%s[%s]'%(type(result[0]),len(result)) or str(result)
+            text_result = (type(result) is list and result and '%s[%s]'%(type(result[0]),len(result))) or str(result)
             now=time.time()
             self.debug('DynamicDS('+self.get_name()+").read_dyn_attr("+aname+")="+text_result+
                     ", ellapsed %1.2e"%(now-date)+" seconds.\n")
@@ -516,9 +516,11 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
 
         except PyTango.DevFailed, e:
             if self.trace:
-                print '\n'.join(['DynamicDS_evalAttr_WrongFormulaException','%s is not a valid expression!'%formula,str(traceback.format_exc())])
+                print '-'*80
+                print '\n'.join(['DynamicDS_evalAttr(%s)_WrongFormulaException:'%aname,'\t"%s"'%formula,str(traceback.format_exc())])
                 print '\n'.join(traceback.format_tb(sys.exc_info()[2]))
                 print '\n'.join([str(e.args[0])]) + '\n'+'*'*80
+                print '-'*80
             #PyTango.Except.throw_exception('DynamicDS_evalAttr_WrongFormula','%s is not a valid expression!'%formula,str(e))
             err = e.args[0]
             raise Exception,';'.join([err.origin,err.reason,err.desc])
@@ -613,7 +615,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
 
 
     def get_quality_for_attribute(self,aname,value):
-        print 'In get_quality_for_attribute(%s,%s)' % (aname,value)
+        print 'In get_quality_for_attribute(%s,%s)' % (aname,(str(value)[:10]+'...'))
         try:
             if hasattr(self,'DynamicQualities') and self.DynamicQualities:
                 ## DynamicQualities: (*)_VAL = ALARM if $_ALRM else VALID
