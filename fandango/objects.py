@@ -2,7 +2,7 @@
 """ @if gnuheader
 #############################################################################
 ##
-## file :       object.py
+## file :       objects.py
 ##
 ## description : see below
 ##
@@ -41,6 +41,16 @@
 """
 
 from __builtin__ import object
+from functional import *
+
+## Useful class objects
+
+class Struct(object):
+    def __init__(self,dct = None):
+        if dct is None: dct = {}
+        elif isSequence(dct): dct = dict.fromkeys(dct)
+        [setattr(self,k,v) for k,v in dct.items()]
+    pass
 
 class Singleton(object):
     """by MarcSantiago from http://code.activestate.com/recipes/52558/
