@@ -807,7 +807,7 @@ class ServersDict(CaselessDict,Object):
         #if not classes: classes = self.ArchivingClasses
         #for cl in self.classes: self.server_StartNForClass(cl,self.MAX_SERVERS_FOR_CLASS,3)
         
-    def stop_servers(self,servers_list=[]):
+    def stop_servers(self,servers_list):
         '''def server_Stop(self,dev_name):
         Stops a list of SERVERs by sending a Kill command to the admin device server.
         If the argument is a single device it will kill all the devices running in the same server!
