@@ -38,6 +38,8 @@
 import operator
 from functools import partial
 
+__all__ = ['partial','first','last','anyone','everyone','isString','isNumber','isSequence','isDictionary','isIterable']
+
 ######################################################3
 ## Some miscellaneous logic methods
 ######################################################3
@@ -71,16 +73,16 @@ def last(seq,MAX_SEQ=1000):
             return n
     return
 
-def anyone(seq):
+def anyone(seq,method=bool):
     """Returns first that is true or last that is false"""
     for s in seq:
-        if s: return s
+        if method(s): return s
     return s
 
-def everyone(seq):
+def everyone(seq,method=bool):
     """Returns last that is true or first that is false"""
     for s in seq:
-        if not s: return s
+        if not method(s): return s
     return s
         
 ######################################################3
