@@ -46,9 +46,59 @@ Several modules included are used in Tango Device Server projects, like @link dy
 
 try: 
     from servers import ServersDict,Astor,ProxiesDict
-except: print 'fandango: Unable to import servers module'
+except: print 'Unable to import servers module'
 
-RELEASE = (7,0,0)
+try: 
+    from arrays import CSVArray
+except: print 'Unable to import arrays module'
 
-__all__ = ['dicts','excepts','log','object','db','dynamic','callbacks','arrays','servers','linos']
+try:
+    from db import FriendlyDB
+except: print 'Unable to import db module'    
+
+try:
+    from device import Dev4Tango,DevChild,TimedQueue
+except: print 'Unable to import device module'
+    
+try:
+    from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration
+except: print 'Unable to import dicts module'
+
+try:
+    from dynamic import DynamicDS,DynamicDSClass,DynamicAttribute,DynamicDSTypes
+except: print 'Unable to import dynamic module'
+
+try:
+    from objects import Object,Singleton,Struct
+except: print 'Unable to import objects module'
+
+try:
+    from linos import shell_command,ping
+except: print 'Unable to import linos module'
+
+try:
+    from log import Logger,LogFilter
+except: print 'Unable to import log module'
+
+try:
+    from excepts import getLastException,getPreviousExceptions,ExceptionWrapper,Catched,Catched2
+except: print 'Unable to import excepts module'
+
+try:
+    from functional import *
+except: print 'Unable to import functional module'
+
+try:
+    from interface import FullTangoInheritance,NewTypeInheritance
+except: print 'Unable to import interface module'
+
+
+
+
+
+
+
+RELEASE = (7,17,0)
+
+__all__ = ['dicts','excepts','log','objects','db','dynamic','callbacks','arrays','servers','linos','functional','interface']
 #print 'module reloaded'
