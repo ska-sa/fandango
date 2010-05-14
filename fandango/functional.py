@@ -43,7 +43,7 @@ __all__ = ['partial','first','last','anyone','everyone','isString','isNumber','i
 ######################################################3
 ## Some miscellaneous logic methods
 ######################################################3
-
+  
 def first(seq):
     """Returns first element of sequence"""
     try: 
@@ -72,27 +72,35 @@ def last(seq,MAX_SEQ=1000):
         except StopIteration,e: 
             return n
     return
+        
+def xor(A,B):
+    """Returns (A and not B) or (not A and B);
+    the difference with A^B is that it works also with different types and returns one of the two objects..
+    """
+    return (A and not B) or (not A and B)
 
 def anyone(seq,method=bool):
     """Returns first that is true or last that is false"""
     for s in seq:
         if method(s): return s
-    return s
+    return s if not s else None
 
 def everyone(seq,method=bool):
     """Returns last that is true or first that is false"""
     for s in seq:
-        if not method(s): return s
+        if not method(s): return s if not s else None
     return s
         
-######################################################3
+######################################################
 ## Methods for identifying types        
-######################################################3
+######################################################
+""" Note of the author:
+ This methods are not intended to be universal, are just practical for general Tango application purposes.
+"""
         
 def isString(seq):
-    if isinstance(seq,str): return True
-    tt = str(type(seq))
-    return 'str' in tt or 'QString' in tt
+    if isinstance(seq,basestring): return True # It matches most python str-like classes
+    return 'string' in str(type(seq)).lower() # It matches QString amongst others
     
 def isNumber(seq):
     return operator.isNumberType(seq)
@@ -104,6 +112,14 @@ def isSequence(seq):
     if hasattr(seq,'items'): return False
     if hasattr(seq,'__iter__'): return True
     return False
+    
+def toList(val,default=None,check=isSequence):
+    if not val: 
+        return default or []
+    elif not check(val): #You can use (lambda s:isinstance(s,list)) if you want
+        return [val]
+    else: 
+        return val
     
 def isDictionary(seq):
     """ It includes dicts and also nested lists """
