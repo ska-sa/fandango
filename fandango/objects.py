@@ -51,6 +51,21 @@ class Struct(object):
         elif isSequence(dct): dct = dict.fromkeys(dct)
         [setattr(self,k,v) for k,v in dct.items()]
     pass
+        
+def Property(fget=None,fset=None,fdel=None,doc=None):
+    """ It makes easier to declare name independent property's (descriptors) by using template methods like:
+    
+    def fget(self,var):
+        return getattr(self,var)    
+    def fset(self,value,var):
+        setattr(self,var,value)
+    def fdel(self,var):
+        delattr(self,var)    
+        
+    MyObject.X = Property(fget,fset,fdel,'X')        
+    """
+    return property(partial(fget,var=doc) if fget else None,partial(fset,var=doc) if fset else None,partial(fdel,var=doc) if fdel else None,doc=doc)
+
 
 class Singleton(object):
     """by MarcSantiago from http://code.activestate.com/recipes/52558/
