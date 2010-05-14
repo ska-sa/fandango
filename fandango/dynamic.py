@@ -626,11 +626,15 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 for exp,value in exprs.items():
                     if '*' in exp and '.*' not in exp: exp.replace('*','.*')
                     if not exp.endswith('$'): exp+='$'
-                    match = re.match(exp,aname)
+                    try:
+                        match = re.match(exp,aname)
+                    except Exception,e:
+                        self.warning('In get_quality_for_attribute, re.match(%s,%s) failed' % (exp,aname))
+                        raise e                        
                     if match: 
                         print 'There is a Quality for this attribute!: '+str((aname,exp,value))
-                        for group in (match.groups()):
-                            value=value.replace('$',group,1)
+                        for group in (match.groups()): #It will replace $ in the formula for all strings matched by .* in the expression
+                            value=value.replace('$',group,1) #e.g: (.*)_VAL={'ALARM':$_ALRM} => RF_VAL={'ALARM':RF_ALRM}
                         quality = eval(value,{},self._locals.copy()) or PyTango.AttrQuality.ATTR_VALID
                         print 'And the quality is: '+str(quality)
                         return quality
