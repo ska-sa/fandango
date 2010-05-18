@@ -55,11 +55,11 @@ class Struct(object):
 def Property(fget=None,fset=None,fdel=None,doc=None):
     """ It makes easier to declare name independent property's (descriptors) by using template methods like:
     
-    def fget(self,var):
+    def fget(self,var): # var is the identifier of the variable
         return getattr(self,var)    
-    def fset(self,value,var):
+    def fset(self,value,var): # var is the identifier of the variable
         setattr(self,var,value)
-    def fdel(self,var):
+    def fdel(self,var): # var is the identifier of the variable
         delattr(self,var)    
         
     MyObject.X = Property(fget,fset,fdel,'X')        
