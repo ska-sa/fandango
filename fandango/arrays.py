@@ -39,6 +39,7 @@
 
 import csv
 import sys
+import re
 import operator
 
 __all__ = ['Grid','CSVArray','tree2table']
@@ -177,15 +178,16 @@ class CSVArray:
         return result
        
     #@Catched
-    def load(self,filename,comment=None,delimiter=None,prune_empty_lines=True):
+    def load(self,filename,comment=None,delimiter=None,prune_empty_lines=True,filters=None):
         if not comment: comment=self.comment
-        rows = [];cols = []; readed = [];
+        filters = filters or {} # filters={key:filter} Lines will be added only if columnName.lower()==key and re.match(filter,value.lower()); header line does not apply
+        rows = [];cols = []; readed = []; header = self.header if self.header is not None else self.xoffset
         
         try:
             fl=open(filename)
             flines = fl.readlines()
             if not delimiter:
-                index = self.header if self.header is not None else self.xoffset
+                index = header
                 sample = flines[index]
                 #print 'Dialect read from sample line (%d): %s' % (index,sample)
                 self.dialect = csv.Sniffer().sniff(sample)
@@ -199,14 +201,20 @@ class CSVArray:
             print 'Exception while reading %s: %s' % (filename,str(e))
         
         if readed:
-            i = 0
+            i,check = 0,True
             for row in readed:
                 #Empty rows are avoided, Row is added only if not commented
-                if (not prune_empty_lines) or \
-                        max([len(el) for el in row] or [0]) is not 0 and \
-                        (not comment or not str(row[0]).startswith(comment)):
+                if ( (not prune_empty_lines)
+                     or (   max([len(el) for el in row] or [0]) is not 0 and
+                            (not comment or not str(row[0]).startswith(comment))
+                        ) ):
                     row2 = [str(r).strip() for r in row] 
-                    rows.append(row2)
+                    if i == header: 
+                        headers = [s.lower() for s in row2]
+                    elif i>header and filters: 
+                        check = all( (k not in headers or re.match(f,row2[headers.index(k)].lower()) ) for k,f in filters.items())
+                    if i<=header or not filters or not rows or check:
+                        rows.append(row2)                        
                 #Correcting initial header and offset when previous lines are being erased
                 else: #The row is discarded
                     #print 'removing line %d'%i
