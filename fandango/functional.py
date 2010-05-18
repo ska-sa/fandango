@@ -79,6 +79,18 @@ def xor(A,B):
     """
     return (A and not B) or (not A and B)
 
+def notNone(arg,default=None):
+    """ Returns arg if not None, else returns default. """
+    return [arg,default][arg is None]
+
+def join(seqs):
+    """ It returns the sum of several sequences as a list """
+    result = []
+    for seq in seqs:
+        result += list(seq)
+    return result
+    
+
 def anyone(seq,method=bool):
     """Returns first that is true or last that is false"""
     for s in seq:
