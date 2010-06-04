@@ -625,7 +625,7 @@ class ServersDict(CaselessDict,Object):
     
     def get_all_devices(self):
         """It returns all devices contained in servers."""
-        return reduce(list.__add__,[s.classes.values() for s in self.values()])
+        return [s for s in reduce(list.__add__,[s.classes.values() for s in self.values()]) if not s.startswith('dserver/')]
     
     def get_server_states(self,update=False):
         result = {}
@@ -673,7 +673,7 @@ class ServersDict(CaselessDict,Object):
     ## @name Operation methods
     # @{
        
-    def test_servers(self,servers=[],class_type='',asynch=True,timeout=60.):
+    def states(self,servers=[],class_type='',asynch=True,timeout=60.):
         """ Updates states for given servers or the given class or all states if no class is given.
         The asynch argument controls if the state test is done in a separate thread for each server or not.
         """
@@ -727,8 +727,7 @@ class ServersDict(CaselessDict,Object):
         return result
     
     ##Aliases for backward compatibility
-    refresh = test_servers 
-    update_states = test_servers
+    refresh = update_states = states
 
     def start_servers(self,servers_list,host='',wait=10.):
         '''def server_Start(self,servers_list,host='',wait=3):
