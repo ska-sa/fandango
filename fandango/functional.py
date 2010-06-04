@@ -37,6 +37,8 @@
 
 import operator
 from functools import partial
+from itertools import count,cycle,repeat,chain,groupby,islice,imap,starmap
+from itertools import dropwhile,takewhile,ifilter,ifilterfalse,izip,combinations,permutations,product
 
 __all__ = ['partial','first','last','anyone','everyone','isString','isNumber','isSequence','isDictionary','isIterable']
 
@@ -103,6 +105,17 @@ def everyone(seq,method=bool):
         if not method(s): return s if not s else None
     return s
         
+def matchAll(exp,seq):
+    """ Returns exprs as a list of matched strings from sequence.
+    If sequence is list it returns exp as a list.
+    """
+    exp,seq = toSequence(exp),toSequence(seq)
+    if anyone(isRegexp(e) for e in exp):
+        exp = [(e.endswith('$') and e or (e+'$')) for e in exp]
+        return [s for s in seq if fun.anyone(re.match(e,s) for e in exp)]
+    else:
+        return [s for s in seq if s in exp]
+        
 ######################################################
 ## Methods for identifying types        
 ######################################################
@@ -113,6 +126,10 @@ def everyone(seq,method=bool):
 def isString(seq):
     if isinstance(seq,basestring): return True # It matches most python str-like classes
     return 'string' in str(type(seq)).lower() # It matches QString amongst others
+    
+def isRegexp(seq):
+    RE = r'.^$*+?{[]\|()'
+    return anyone(c in RE for c in seq)
     
 def isNumber(seq):
     return operator.isNumberType(seq)
@@ -132,6 +149,8 @@ def toList(val,default=None,check=isSequence):
         return [val]
     else: 
         return val
+    
+toSequence = toList
     
 def isDictionary(seq):
     """ It includes dicts and also nested lists """
