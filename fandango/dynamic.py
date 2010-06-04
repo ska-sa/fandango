@@ -236,12 +236,13 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
         self.DynamicSpectrumSize=props['DynamicSpectrumSize']        
         
-        props = db.get_device_property(self.get_name(),['DynamicAttributes','DynamicStates','DynamicImports','DynamicQualities'])
+        props = db.get_device_property(self.get_name(),['DynamicAttributes','DynamicStates','DynamicImports','DynamicQualities','KeepAttributes'])
         for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
         self.DynamicAttributes=props['DynamicAttributes']
         self.DynamicStates=props['DynamicStates']
         self.DynamicImports=props['DynamicImports']
         self.DynamicQualities=props['DynamicQualities']
+        self.KeepAttributes=props['KeepAttributes']
         
     def get_device_property(self,property,update=False):
         if update or not hasattr(self,property):
@@ -299,6 +300,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         It is an static method.
         """
         self.debug('DynamicDS.dyn_attr( ... ), entering ...')
+        self.KeepAttributes = [s.lower() for s in self.KeepAttributes]
 
         if not hasattr(self,'DynamicStates'):
             self.error('DynamicDS property NOT INITIALIZED!')
@@ -336,6 +338,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 if bool(aname not in self.dyn_values): 
                     create = True
                     self.dyn_values[aname]=DynamicAttribute()
+                    self.dyn_values[aname].keep = self.KeepAttributes and not 'no' in self.KeepAttributes and any(q in self.KeepAttributes for q in [aname,'*','yes','YES'])
                     self.dyn_types[aname]=None                
                 else: create = False
 
@@ -403,6 +406,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
     def read_dyn_attr(self,attr,fire_event=True):
         aname = attr.get_name()
         tstart=time.time()
+        keep = aname in self.dyn_values and self.dyn_values[aname].keep
         self.debug("DynamicDS("+self.get_name()+")::read_dyn_atr("+attr.get_name()+"), entering at "+time.ctime()+"="+str(tstart)+"...")
         #raise Exception,'DynamicDS_evalAttr_NotExecuted: searching memory leaks ...'
         try:
@@ -422,7 +426,9 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
 
             ##if fire_event: self.fireAttrEvent(aname,result)
             #Value must be updated after fire Event
-            self.dyn_values[aname].update(result,date,quality)
+            if keep: 
+                self.dyn_values[aname].update(result,date,quality)
+                if any(q in self.KeepAttributes for q in ['*','yes','YES']): self.info('Value of %s will be kept for later reuse' % aname)
 
             text_result = (type(result) is list and result and '%s[%s]'%(type(result[0]),len(result))) or str(result)
             now=time.time()
@@ -445,16 +451,16 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 self.info('-'*80)
         except Exception, e:           
             now=time.time()
-            self.dyn_values[aname].update(None,now,PyTango.AttrQuality.ATTR_INVALID)
+            self.dyn_values[aname].update(e,now,PyTango.AttrQuality.ATTR_INVALID) #Exceptions always kept!
             self._read_times[aname]=now-self._hook_epoch #Internal debugging
             self._eval_times[aname]=now-tstart #Internal debugging
             if aname==self.dyn_values.keys()[-1]: self._cycle_start = now
             #last_exc = getLastException()
             #last_exc = '\n'.join([str(e)]*4)
             last_exc = str(e)
-            self.error('DynamicDS_read_dyn_attr_Exception: %s' % last_exc)
+            self.error('DynamicDS_read_%s_Exception: %s' % (aname,last_exc))
             print traceback.format_exc()
-            raise Exception, 'DynamicDS_read_dyn_attr_Exception: %s' % last_exc
+            raise Exception('DynamicDS_read_%s_Exception: %s' % (aname,last_exc))
             #PyTango.Except.throw_exception('DynamicDS_read_dyn_attr_Exception',str(e),last_exc)
 
     read_dyn_attr=staticmethod(read_dyn_attr)
@@ -476,7 +482,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
     #------------------------------------------------------------------------------------------------------
 
     # DYNAMIC ATTRIBUTE EVALUATION ... Copy it to your device and add any method you will need
-    def evalAttr(self,aname,WRITE=False,VALUE=None,_locals={}):
+    def evalAttr(self,aname,WRITE=False,VALUE=None,_locals=None):
         ''' SPECIFIC METHODS DEFINITION DONE IN self._locals!!! 
         @remark Generators don't work  inside eval!, use lists instead
         '''
@@ -494,8 +500,17 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             self.warning('DynamicDS.evalAttr: %s doesnt match any Attribute name, trying to evaluate ...'%aname)
             formula,compiled=aname,None
         try:
-            __locals={}#locals().copy() #Low priority: local variables
-            for k,v in self.dyn_values.items(): self._locals[k]=v#.value #Updating Last Attribute Values
+            __locals={}#locals().copy() #Low priority: local variables; this could be replaced by direct self._locals
+            if not self.dyn_values[aname].dependencies:
+                for k,v in self.dyn_values.items(): 
+                    if k in formula:
+                        if k not in self.dyn_values[aname].dependencies:
+                            self.dyn_values[aname].dependencies.append(k)
+                        if isinstance(v.value,Exception): 
+                            raise v.value #Exceptions are passed to dependent attributes
+                        else: __locals[k]=v#.value #Updating Last Attribute Values                
+            __locals.update((d,self.dyn_values[d].value) for d in self.dyn_values[aname].dependencies)
+            
             self._locals.update({
                 't':time.time()-self.time0,
                 'WRITE':WRITE,
@@ -504,11 +519,10 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 'VALUE':VALUE,
                 }) #It is important to keep this values persistent; becoming available for quality/date/state/status management
             __locals.update(self._locals) #Second priority: object statements
-            __locals.update(_locals) #High Priority: variables passed as argument
+            
+            if _locals is not None: __locals.update(_locals) #High Priority: variables passed as argument
             if not WRITE:
                 result = eval(compiled or formula,self._globals,__locals)
-                #text_result = type(result) is list and '%s[%s]'%(type(result[0]),len(result)) or str(result)
-                #self.dyn_types[aname].pytype(result)
                 return result
             else:
                 self.debug('%s::evalAttr(WRITE): Attribute=%s; formula=%s; VALUE=%s'%(self.get_name(),aname,formula,str(VALUE)))
@@ -523,13 +537,13 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 print '-'*80
             #PyTango.Except.throw_exception('DynamicDS_evalAttr_WrongFormula','%s is not a valid expression!'%formula,str(e))
             err = e.args[0]
-            raise Exception,';'.join([err.origin,err.reason,err.desc])
+            raise e#Exception,';'.join([err.origin,err.reason,err.desc])
             #PyTango.Except.throw_exception(str(err.reason),str(err.desc),str(err.origin))
 
         except Exception,e:
             print '\n'.join(['DynamicDS_evalAttr_WrongFormulaException','%s is not a valid expression!'%formula,str(e)])
             print '\n'.join(traceback.format_tb(sys.exc_info()[2]))
-            raise Exception,'DynamicDS_eval(%s): %s'%(formula,traceback.format_exc())
+            raise e#Exception,'DynamicDS_eval(%s): %s'%(formula,traceback.format_exc())
             #PyTango.Except.throw_exception('DynamicDS_evalAttr_WrongFormula','%s is not a valid expression!'%formula,str(traceback.format_exc()))
             
         finally: 
@@ -879,6 +893,10 @@ class DynamicDSClass(PyTango.DeviceClass):
             [PyTango.DevVarStringArray,
             "This property will allow to declare formulas for Attribute Qualities.",
             [] ],            
+        'KeepAttributes':
+            [PyTango.DevVarStringArray,
+            "This property can be used to store the values of only needed attributes; values are 'yes', 'no' or a list of attribute names",
+            ['yes'] ],              
         }
 
     #    Command definitions
@@ -993,6 +1011,8 @@ class DynamicAttribute(object):
         self.compiled = None
         self.states_queue=[]
         self.type=None
+        self.keep = True
+        self.dependencies = []
         self.primeOlder=False #
         #self.__add__ = lambda self,other: self.value.__add__(other)
 
