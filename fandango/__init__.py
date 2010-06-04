@@ -43,6 +43,7 @@ Several modules included are used in Tango Device Server projects, like @link dy
 @brief This module(s) include some PyTango additional classes and methods that are not implemented in the C++/Python API's; it replaces the previous PyTango_utils module
  
 """
+import traceback
 
 try: 
     from servers import ServersDict,Astor,ProxiesDict
@@ -66,7 +67,9 @@ except: print 'Unable to import dicts module'
 
 try:
     from dynamic import DynamicDS,DynamicDSClass,DynamicAttribute,DynamicDSTypes
-except: print 'Unable to import dynamic module'
+except: 
+    print 'Unable to import dynamic module'
+    print traceback.format_exc()
 
 try:
     from objects import Object,Singleton,Struct
