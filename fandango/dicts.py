@@ -186,7 +186,7 @@ class ThreadDict(dict):
                 except Exception,e:
                     if self.trace:
                         print '!'*80
-                        print traceback.format_exc()
+                        print '%s ...'%str(traceback.format_exc())[:100]
                     raise e
                 finally:
                     if self.event.isSet(): break
