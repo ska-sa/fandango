@@ -338,7 +338,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 if bool(aname not in self.dyn_values): 
                     create = True
                     self.dyn_values[aname]=DynamicAttribute()
-                    self.dyn_values[aname].keep = self.KeepAttributes and not 'no' in self.KeepAttributes and any(q in self.KeepAttributes for q in [aname,'*','yes','YES'])
+                    self.dyn_values[aname].keep = self.KeepAttributes and (not 'no' in self.KeepAttributes) and any(q in self.KeepAttributes for q in [aname,'*','yes','YES'])
                     self.dyn_types[aname]=None                
                 else: create = False
 
