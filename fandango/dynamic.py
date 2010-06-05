@@ -250,7 +250,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         value = getattr(self,property) 
         return value[0] if type(value) is list else value
 
-    def check_polled_attributes(self,db=None,new_attr={}):
+    def check_polled_attributes(self,db=None,new_attr={},use_admin=False):
         '''
         If a PolledAttribute is removed of the Attributes declaration it can lead to SegmentationFault at Device Startup.
         polled_attr property must be verified to avoid that.
@@ -258,34 +258,63 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         therefore new_attr must be used to add to the valid attributes any attribute added by subclasses
         Polling configuration configured through properties has preference over the hard-coded values.
         '''
-        self.info('In check_polled_attributes ...')
+        self.info('In check_polled_attributes(%s)'%new_attr)
         self.db = db = db or (hasattr(self,'db') and getattr(self,'db')) or PyTango.Database()
         my_name = self.get_name()
         
         new_attr = dict.fromkeys(new_attr,3000) if isinstance(new_attr,list) else new_attr
         props = db.get_device_property(my_name,['DynamicAttributes','polled_attr'])
-        pattrs,npattrs = props['polled_attr'],[]
+        npattrs = []
         
-        dyn_attrs = [k.split('=')[0].lower() for k in props['DynamicAttributes'] if k and not k.startswith('#')]
+        dyn_attrs = [k.split('=')[0].lower().strip() for k in props['DynamicAttributes'] if k and not k.startswith('#')]
         dyn_attrs.extend(k.lower() for k in new_attr.keys()) #dyn_attrs will contain both dynamic attributes and new aggregated attributes.
         dyn_attrs.extend(['state','status'])
+        
+        ## The Admin device server can be used only if the server is already running; NOT at startup!
+        if use_admin: 
+            print 'Getting Util.instance()'
+            admin = PyTango.Util.instance().get_dserver_device()                
+            pattrs = []
+            for st in admin.DevPollStatus(name):
+                lines = st.split('\n')
+                try: pattrs.extend([lines[0].split()[-1],lines[1].split()[-1]])
+                except: pass
+        else:        
+            pattrs = props['polled_attr']
         
         #First: propagate all polled_attrs if they appear in the new attribute list
         for i in range(len(pattrs))[::2]:
             att = pattrs[i].lower()
-            period = att in new_attr and new_attr[att] or pattrs[i+1]
-            if att in dyn_attrs: 
-                (npattrs.append(att),npattrs.append(period))
+            period = pattrs[i+1]
+            if att in npattrs: 
+                continue #remove duplicated
+            elif att.lower() in dyn_attrs: 
+                (npattrs.append(att.lower()),npattrs.append(period))
             else: 
-                self.info('Attribute %s removed from %s.polled_attr Property' % (pattrs[i],my_name))
+                self.info('Removing Attribute %s from %s.polled_attr Property' % (pattrs[i],my_name))
+                if use_admin:
+                    try: admin.RemObjPolling([name,'attribute',att])
+                    except: print traceback.format_exc()
                 
         #Second: add new attributes to the list of attributes to configure; attributes where value is None will not be polled
         for n,v in new_attr.iteritems():
-            if n not in npattrs and v:
-                (npattrs.append(n),npattrs.append(v))
+            if n.lower() not in npattrs and v:
+                (npattrs.append(n.lower()),npattrs.append(v))
                 self.info('Attribute %s added to %s.polled_attr Property' % (n,my_name))
                 
-        db.put_device_property(my_name,{'polled_attr':npattrs})
+        if use_admin:
+            for i in range(len(npattrs))[::2]:
+                try:
+                    att,period = npattrs[i],npattrs[i+1]
+                    if att not in pattrs:
+                        admin.AddObjPolling([[int(period)],[name,'attribute',att]])
+                    else:
+                        admin.UpdObjPolling([[int(period)],[name,'attribute',att]])
+                except:
+                    print 'Unable to set %s polling' % (npattrs[i])
+                    print traceback.format_exc()
+        else:
+            db.put_device_property(my_name,{'polled_attr':npattrs})
         self.info('Out of check_polled_attributes ...')
 
     #------------------------------------------------------------------------------------------------------
@@ -487,29 +516,30 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         @remark Generators don't work  inside eval!, use lists instead
         '''
 #            self.debug("DynamicDS("+self.get_name()+ ")::evalAttr("+aname+"): ...")
-        if aname in self.dyn_attrs:
-            formula,compiled = self.dyn_values[aname].formula,self.dyn_values[aname].compiled#self.dyn_attrs[aname]
-        elif not any(aname in d for d in [_locals,self._globals,self._locals]) and aname.lower() in [s.lower() for s in self.dyn_attrs.keys()]:
-            print 'Trying to find a caseless Attribute that match'
-            for k in self.dyn_attrs:
-                if k.lower()==aname.lower():
-                    #formula = self.dyn_attrs[k]
-                    formula,compiled = self.dyn_values[k].formula,self.dyn_values[k].compiled
-                    break
-        else:
-            self.warning('DynamicDS.evalAttr: %s doesnt match any Attribute name, trying to evaluate ...'%aname)
-            formula,compiled=aname,None
+        USE_LOCALS = False #This option set to False improves memory usage (it seems that del at finally close didn't worked properly)
+        if aname in self.dyn_values:
+            formula,compiled = self.dyn_values[aname].formula,self.dyn_values[aname].compiled#self.dyn_attrs[aname]       
+        else:#Getting a caseless attribute that match
+            try:
+                aname,formula,compiled = ((k,self.dyn_values[k].formula,self.dyn_values[k].compiled) for k in self.dyn_values if k.lower()==aname.lower()).next()
+            except: 
+                self.warning('DynamicDS.evalAttr: %s doesnt match any Attribute name, trying to evaluate ...'%aname)
+                formula,compiled=aname,None                
+
         try:
-            __locals={}#locals().copy() #Low priority: local variables; this could be replaced by direct self._locals
+            __locals= USE_LOCALS and {} or self._locals #{}#locals().copy() #Low priority: local variables; this could be replaced by direct self._locals
+            #Checking attribute dependencies
             if not self.dyn_values[aname].dependencies:
-                for k,v in self.dyn_values.items(): 
+                for k,v in self.dyn_values.items():
                     if k in formula:
-                        if k not in self.dyn_values[aname].dependencies:
-                            self.dyn_values[aname].dependencies.append(k)
-                        if isinstance(v.value,Exception): 
-                            raise v.value #Exceptions are passed to dependent attributes
-                        else: __locals[k]=v#.value #Updating Last Attribute Values                
-            __locals.update((d,self.dyn_values[d].value) for d in self.dyn_values[aname].dependencies)
+                        self.dyn_values[aname].dependencies.add(k)
+                        self.dyn_values[k].keep = True
+                        
+            #Updating Last Attribute Values
+            for k in self.dyn_values[aname].dependencies:
+                v = self.dyn_values[k]
+                if isinstance(v.value,Exception): raise v.value #Exceptions are passed to dependent attributes
+                else: __locals[k]=v.value #.value 
             
             self._locals.update({
                 't':time.time()-self.time0,
@@ -518,9 +548,9 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 'NAME':aname,
                 'VALUE':VALUE,
                 }) #It is important to keep this values persistent; becoming available for quality/date/state/status management
-            __locals.update(self._locals) #Second priority: object statements
-            
+            if USE_LOCALS: __locals.update(self._locals) #Second priority: object statements
             if _locals is not None: __locals.update(_locals) #High Priority: variables passed as argument
+            
             if not WRITE:
                 result = eval(compiled or formula,self._globals,__locals)
                 return result
@@ -539,16 +569,15 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             err = e.args[0]
             raise e#Exception,';'.join([err.origin,err.reason,err.desc])
             #PyTango.Except.throw_exception(str(err.reason),str(err.desc),str(err.origin))
-
         except Exception,e:
             print '\n'.join(['DynamicDS_evalAttr_WrongFormulaException','%s is not a valid expression!'%formula,str(e)])
             print '\n'.join(traceback.format_tb(sys.exc_info()[2]))
             raise e#Exception,'DynamicDS_eval(%s): %s'%(formula,traceback.format_exc())
             #PyTango.Except.throw_exception('DynamicDS_evalAttr_WrongFormula','%s is not a valid expression!'%formula,str(traceback.format_exc()))
-            
         finally: 
-            print 'deleting __locals'
-            del __locals
+            if USE_LOCALS:
+                print 'deleting __locals'
+                del __locals
 
     # DYNAMIC STATE EVALUATION
     def evalState(self,formula,_locals={}):
@@ -1012,7 +1041,7 @@ class DynamicAttribute(object):
         self.states_queue=[]
         self.type=None
         self.keep = True
-        self.dependencies = []
+        self.dependencies = set()
         self.primeOlder=False #
         #self.__add__ = lambda self,other: self.value.__add__(other)
 
