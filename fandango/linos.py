@@ -74,42 +74,48 @@ def desktop_switcher(period,event=None,iterations=2):
         
 #!/usr/bin/env python2.5
 
-def ping(ips):
+def ping(ips,threaded = False):
     ''' By Noah Gift's, PyCon 2008
     ips =  ['ivc%02d01'%(i+1) for i in range(16)]
     #ips = ["10.0.1.1", "10.0.1.3", "10.0.1.11", "10.0.1.51"]
     '''
-    from threading import Thread
     import subprocess
-    from Queue import Queue
     if isinstance(ips,str): ips=[ips]
-    num_threads = 4
-    queue = Queue()
-    results = {}
-    #wraps system ping command
-    def pinger(i, q, r):
-        """Pings subnet"""
-        while True:
-            ip = q.get()
-            #print "Thread %s: Pinging %s" % (i, ip)
-            ret = subprocess.call("ping -c 1 %s" % ip,
+    def _ping(ip):
+        return not subprocess.call("ping -c 1 %s" % ip,
                             shell=True,
                             stdout=open('/dev/null', 'w'),
-                            stderr=subprocess.STDOUT)
-            #if ret == 0: print "%s: is alive" % ip
-            #else: print "%s: did not respond" % ip
-            r[ip] = (not ret)
-            q.task_done()
-    #Spawn thread pool
-    for i in range(num_threads):
-        worker = Thread(target=pinger, args=(i, queue,results))
-        worker.setDaemon(True)
-        worker.start()
-    #Place work in queue
-    for ip in ips:
-        queue.put(ip)
-    #Wait until worker threads are done to exit    
-    queue.join()
+                            stderr=subprocess.STDOUT)     
+    if not threaded:
+        return dict((ip,_ping(ip)) for ip in ips)
+    else:
+        from threading import Thread,Event
+        from Queue import Queue        
+        num_threads,event = 4,Event()
+        pool,queue,results = [],Queue(),{}
+        #wraps system ping command
+        ## WARNING ... THIS IMPLEMENTATION OF THE THREAD IS GIVING A LOT OF PROBLEMS DUE TO THREAD NOT CLOSING! (waiting at q.get())
+        def pinger(i, q, r):
+            """Pings subnet"""
+            while not event.isSet():
+                ip = q.get()
+                #print "Thread %s: Pinging %s" % (i, ip)
+                ret = _ping(ip)
+                #if ret == 0: print "%s: is alive" % ip
+                #else: print "%s: did not respond" % ip
+                r[ip] = (not ret)
+                q.task_done()
+                event.wait(.01)
+        #Spawn thread pool
+        for i in range(num_threads):
+            pool.append(Thread(target=pinger, args=(i, queue,results)))
+            pool[-1].setDaemon(True)
+            pool[-1].start()
+        #Place work in queue
+        for ip in ips: queue.put(ip)
+        queue.join() #Wait until worker threads are done to exit
+        event.set(),event.wait(.01)
+        #[t.join() for t in pool]
     return results
     
 #-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~
