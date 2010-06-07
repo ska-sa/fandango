@@ -531,14 +531,15 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             #Checking attribute dependencies
             if not self.dyn_values[aname].dependencies:
                 for k,v in self.dyn_values.items():
-                    if k in formula:
+                    if k in formula and k.lower().strip()!=aname.lower().strip():
                         self.dyn_values[aname].dependencies.add(k)
                         self.dyn_values[k].keep = True
                         
             #Updating Last Attribute Values
             for k in self.dyn_values[aname].dependencies:
                 v = self.dyn_values[k]
-                if isinstance(v.value,Exception): raise v.value #Exceptions are passed to dependent attributes
+                if k.lower().strip()!=aname.lower().strip() and isinstance(v.value,Exception): 
+                    raise v.value #Exceptions are passed to dependent attributes
                 else: __locals[k]=v.value #.value 
             
             self._locals.update({
