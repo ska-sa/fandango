@@ -42,6 +42,7 @@ import socket
 
 import PyTango
 
+import functional as fun
 from objects import Object
 from dicts import CaselessDefaultDict,CaselessDict
 
@@ -307,7 +308,7 @@ class TServer(Object):
     def get_device_list(self): 
         '''Returns a list of devices declared for this server.'''
         result=[]
-        [result.extend(c) for c in self.classes.values()]
+        [result.extend(v) for c,v in self.classes.items() if c.lower()!='dserver']
         return result
     
     def get_proxy(self,device=''): 
@@ -625,7 +626,7 @@ class ServersDict(CaselessDict,Object):
     
     def get_all_devices(self):
         """It returns all devices contained in servers."""
-        return [s for s in reduce(list.__add__,[s.classes.values() for s in self.values()]) if not s.startswith('dserver/')]
+        return list(fun.chain(*[s.get_device_list() for s in self.values()]))
     
     def get_server_states(self,update=False):
         result = {}
