@@ -196,9 +196,11 @@ class CSVArray:
             else:
                 readed = [ r for r in csv.reader(flines, delimiter=delimiter)]
                 #readed = csv.reader(fl, delimiter='\t')
-            fl.close()
         except Exception,e:
             print 'Exception while reading %s: %s' % (filename,str(e))
+        finally:
+            try: fl.close()
+            except: pass
         
         if readed:
             i,check = 0,True
@@ -469,12 +471,10 @@ class CSVArray:
         else:
             tree={}
             for k in klines.keys():
-                if not k: 
+                #if not k:  #!DEPRECATED AS WE WERE LOOSING INFORMATION IF A CELL IS EMPTY!
                     #print 'WARNING! %s has not been properly filled' % k
-                    pass
-                else:
-                    #if root+1==self.ncols: tree[k]=self.get(y=root+1,xsubset=klines[k])
-                    tree[k]=self.getAsTree(root=root+1,xsubset=klines[k],lastbranch=lastbranch)
+                    #continue
+                tree[k]=self.getAsTree(root=root+1,xsubset=klines[k],lastbranch=lastbranch)
             return tree
             
     def updateFromTree(self,tree):
