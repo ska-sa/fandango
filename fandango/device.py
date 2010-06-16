@@ -62,6 +62,13 @@ try:
     TangoDatabase = PyTango.Database()
 except:
     TangoDatabase = None
+    
+def attr2str(attr_value):
+    att_name = '%s='%attr_value.name if hasattr(attr_value,'name') else ''
+    if hasattr(attr_value,'value'):
+        return '%s%s(%s)' %(att_name,type(attr_value.value).__name__,attr_value.value)
+    else: 
+        return '%s%s(%s)' %(att_name,type(attr_value).__name__,attr_value)
 
 class Dev4Tango(PyTango.Device_4Impl,log.Logger):
     """
@@ -316,8 +323,8 @@ class DevChild(Dev4Tango):
                         self.dp = PyTango.DeviceProxy(self.ParentName)
                         self.Parent = self.dp #Parent is an Alias for the device proxy
                         self.dp.set_timeout_millis(1000)
-                        self.set_state(PyTango.DevState.INIT)
                         self.dp.ping()
+                        self.set_state(PyTango.DevState.INIT)                        
                         self.check_dp_attributes()
                         self.dp_errors=0
                         self.lasttime=time.time()                    
@@ -361,50 +368,29 @@ class DevChild(Dev4Tango):
                 
         #Configure the attribute polling
             if not self.dp.is_attribute_polled(att) and self.dp_force_polling:
-                ''' OJO!
-                Absolute and relative changes should be set previously!!!!
-                '''
+                ## OJO! Absolute and relative changes should be set previously!!!!
                 print '*'*80
                 print self.get_name(),'.check_dp_attributes(): forcing ',att,' polling to ',argin
                 print '*'*80
                 period = self.dp.get_attribute_poll_period(att) or (int(self.dp_force_polling)>1000 or 3000)
                 self.dp.poll_attribute(att,period)
                 print self.get_name(),".poll_attribute(",att_name,",",period,")"
-                
             try:
-                GlobalCallback.lock.acquire()
                 if self.dp.is_attribute_polled(att):
                     #
                     # CONFIGURING EVENTS
                     #
-                    att_name = att if len(att.split('/'))>2 else ('/'.join([self.ParentName,att])).lower()
+                    att_name = att.lower() if len(att.split('/'))>2 else ('/'.join([self.ParentName,att])).lower()
                     self.debug('In check_dp_attributes(...): checking %s' % att_name)
-                    if not att_name in EventsList.keys():
+                    if not callbacks.inEventsList(att_name):
                         self.info('In check_dp_attributes: subscribing event for %s'%att_name)
-                        EventsList[att_name] = TAttr(att_name)
-                        EventsList[att_name].receivers.append(self.get_name())
                         if 'CHANGE_EVENT' not in dir(PyTango.EventType): PyTango.EventType.CHANGE_EVENT = PyTango.EventType.CHANGE
-                        event_id = self.dp.subscribe_event(att,PyTango.EventType.CHANGE_EVENT,GlobalCallback,[],True)
-                        #This last argument subscribe to not-running devices
-                        # Global List
-                        EventsList[att_name].dp = self.dp
-                        EventsList[att_name].event_id = event_id
-                        EventsList[att_name].dev_name = self.ParentName
-                        AttributesList[att_name]=None
-                        if att=='State':
-                            StatesList[dev_name]=PyTango.DevState.UNKNOWN
+                        event_id = self.dp.subscribe_event(att,PyTango.EventType.CHANGE_EVENT,GlobalCallback,[],True) #This last argument subscribe to not-running devices
+                        tattr = TAttr(att_name,dev_name=self.ParentName.lower(),proxy=self.dp,event_id=event_id)
+                        callbacks.addTAttr(tattr)
                         self.info("In check_dp_attributes()\n Listing Device/Attributes in EventsList:")
-                        for a,t in EventsList.items(): self.info("\tAttribute: %s\tDevice: %s"%(a,t.dev_name))
-                    else:
-                        self.info("In check_dp_attributes(%s) This attribute is already in the list, adding composer to receivers list."%att_name)
-                        if not self.get_name() in EventsList[att_name].receivers:
-                            EventsList[att_name].receivers.append(self.get_name())
-                        # IT MUST BE DONE BY CALLBACK, NOT HERE
-                        #if EventsList[att_name].attr_value is not None:
-                        #    if att is 'State':
-                        #        StatesList[dev_name]=EventsList[att_name].attr_value.value
-                        #    else: 
-                        #        AttributesList[dev_name]=EventsList[att_name].attr_value.value
+                        for a,t in callbacks.getEventItems(): self.info("\tAttribute: %s\tDevice: %s"%(a,t.dev_name))
+                    callbacks.addReceiver(att_name,self.get_name()) #This method checks if receiver was already in the list of not
                 else:
                     self.info('In check_dp_attributes: attribute %s is not polled and will be not managed by callbacks, use check_dp_attributes_epoch instead'%att)
                     #
@@ -414,8 +400,6 @@ class DevChild(Dev4Tango):
             except Exception,e:
                 self.error('Something failed in check_dp_attributes()!: %s'%traceback.format_exc())
                 raise e
-            finally:
-                GlobalCallback.lock.release()
         self.info("Out of check_dp_attributes ...")
             
     def getParentState(self,dev_name=None):
@@ -424,7 +408,6 @@ class DevChild(Dev4Tango):
         if dState is not None:
             self.info('In DevChild(%s).getParentState(%s)=%s ... parent state read from callbacks'%(self.get_name(),dev_name,str(dState)))
         else:
-            #print 'In DevChild(%s).getParentState(%s) ... Forcing an State Reading in the parent device.'%(self.get_name(),dev_name)
             try:
                 attvalue=self.force_Attribute_reading('state')
                 dState=attvalue.value
@@ -438,10 +421,10 @@ class DevChild(Dev4Tango):
         now=time.time()
         attvalue=None
         last_update=self.getLastAttributeUpdate(att)
-        self.info('In force_Attribute_reading ...'': Last update of attribute %s was at %s, just %s seconds ago.'%(att,time.ctime(last_update),str(now-last_update)))
+        self.info('In force_Attribute_reading(%s): last update at %s, %s s ago.'%(att,time.ctime(last_update),str(now-last_update)))
         try:
             if att in self.last_retries.keys() and self.MIN_PERIOD>(self.last_retries[att]):
-                self.info('DevChild.force_Attribute_reading at %s: read_attribute is not allowed with a frequency < 3 seconds (last was at %s)'%(time.ctime(now),time.ctime(self.lasttime)))
+                self.info('DevChild.force_Attribute_reading at %s: read_attribute retry not allowed in < 3 seconds'%(time.ctime(now)))
             else:
                 #These variables should be recorded first, if it isn't an exception will ignore it!
                 #Last update is recorded even if reading is not possible, to avoid consecutive retries
@@ -451,7 +434,7 @@ class DevChild(Dev4Tango):
                 attvalue=self.dp.read_attribute(att)
                 if attvalue: 
                     self.lastcomm='DeviceProxy.read_attribute(%s,%s)'%(att,str(attvalue.value))            
-                    print 'Parent.%s was succesfully read: %s'%(att,str(attvalue.value))
+                    self.info('Parent.%s was succesfully read: %s'%(att,str(attvalue.value)))
                     if att=='state':
                         callbacks.setStateFor(self.ParentName,attvalue.value)
                     else:
