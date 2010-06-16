@@ -79,12 +79,12 @@ class TAttr(EventStruct):
     This class is used to keep information about events received, 
     example of usage inside device.DevChild 
     """
-    def __init__(self,name):
+    def __init__(self,name,dev_name='',proxy=None,event_id=None):
         self.name=name
         self.event=None #This is the last event received
-        self.event_id=None #This is the ID received when subscribing
-        self.dp=None #This is the device proxy
-        self.dev_name=''
+        self.event_id=event_id #This is the ID received when subscribing
+        self.dp=proxy #This is the device proxy
+        self.dev_name=dev_name
         self.receivers=[] #This is the list of composers that must receive this event
         self.attr_value=None
         self.State=PyTango.DevState.UNKNOWN
@@ -171,10 +171,9 @@ class EventCallback():
     def __init__(self):
         self.lock=threading.RLock()
         self.TimeOutErrors=0
-        self.PermittedExceptions=[]
+        self.NotifdExceptions=['OutOfSync','EventTimeout','NotificationServiceFailed']
     
     def push_event(self,event):
-        #print 'in EventCallback.push event'
         self.lock.acquire()
         try:
             #Pruning tango:$TANGO_HOST and other tags
@@ -182,29 +181,29 @@ class EventCallback():
             dev_name = hasattr(event.device,'name') and event.device.name() or event.device
             print "in EventCallback.push_event(",dev_name,": ",attr_name,")"
             if not event.err and event.attr_value is not None:
-                print "Event: ",attr_name,"=", event.attr_value.value
+                print "in EventCallback.push_event(...): ",attr_name,"=", event.attr_value.value
                 self.TimeOutErrors=0
                 EventsList[attr_name.lower()].set(event)
                 if attr_name.lower().endswith('/state'):
                     StatesList[dev_name.lower()]=event.attr_value.value
                 AttributesList[event.attr_name.lower()]=event.attr_value
             else:
-                print 'Received an Error Event!: ',event.errors
+                print 'in EventCallback.push_event(...): Received an Error Event!: ',event.errors
                 EventsList[attr_name.lower()].set(event)
-                if attr_name.lower().endswith('/state'):
-                    StatesList[dev_name.lower()]=PyTango.DevState.UNKNOWN
-                AttributesList[attr_name.lower()]=None
-                #if 'OutOfSync' in event.errors[0]['reason']:
-                if [e for e in event.errors 
-                    if hasattr(e,'keys') and 'reason' in e.keys() 
-                        and not any([re.findall(exp,e['reason'].lower()) for exp in self.PermittedExceptions])
-                    ]:
-                    print 'callbacks=> DISCARDED EVENT %s.%s.%s FOR SAFETY REASONS!!!' \
-                        %(dev_name,attr_name,e['reason'])
+                #if 'OutOfSync' in event.errors[0]['reason']: or 'API_EventTimeout' in event.errors[0]['reason']:
+                #if [e for e in event.errors if hasattr(e,'keys') and 'reason' in e.keys() and any(re.search(exp,e['reason']) for exp in self.NotifdExceptions)]:
+                reasons = [getattr(e,'reason',e.get('reason',str(e)) if hasattr(e,'get') else str(e)) for e in event.errors] #Needed to catch both PyTango3 and PyTango7 exceptions
+                if any(n in r for n in self.NotifdExceptions for r in reasons):
+                    print 'callbacks=> DISCARDED EVENT FOR NOTIFD REASONS!!! %s(%s)' \
+                        %(dev_name,reasons)
                     self.TimeOutErrors+=1
                     self.lock.release()
                     return
-                else: self.TimeOutErrors=0
+                else: 
+                    self.TimeOutErrors=0                
+                    if attr_name.lower().endswith('/state'):
+                        StatesList[dev_name.lower()]=None #An unreaded State cannot be UNKNOWN, it must be None to notify that an exception occurred!
+                    AttributesList[attr_name.lower()]=None
             #Launching Device.push_event()                
             for rec in EventsList[attr_name].receivers:
                 if rec in EventReceivers.keys(): EventReceivers[rec].push_event(event)
@@ -219,38 +218,39 @@ class EventCallback():
 #THIS IS THE EVENTS CALLBACK SINGLETONE:
 GlobalCallback = EventCallback()
 
-def subscribeToAttribute(subscriber,att_name):
-    """
-    subscriber: a DeviceImpl object or the name of an already subscribed object
-    attribute: the FULL_NAME of the attribute to subscribe
-    """
-    if att_name.count('/')<3: raise 'subscribeToAttribute_IncompleteAttributeName'
-    if isinstance(subscriber,PyTango.DeviceImpl):
-        EventReceivers[subscriber.get_name()]=subscriber
-    elif isinstance(subscriber,str):
-        subscriber=EventReceivers[subscriber]
-    else: raise 'subscribeToAttribute_UnknownSubscriberException'
+## @TODO ... implemented in addTAttr and addReceiver ... missing a dp attribute to finish the work
+#def subscribeToAttribute(subscriber,att_name):
+    #"""
+    #subscriber: a DeviceImpl object or the name of an already subscribed object
+    #attribute: the FULL_NAME of the attribute to subscribe
+    #"""
+    #if att_name.count('/')<3: raise 'subscribeToAttribute_IncompleteAttributeName'
+    #if isinstance(subscriber,PyTango.DeviceImpl):
+        #EventReceivers[subscriber.get_name()]=subscriber
+    #elif isinstance(subscriber,str):
+        #subscriber=EventReceivers[subscriber]
+    #else: raise 'subscribeToAttribute_UnknownSubscriberException'
     
-    if not att_name in EventsList.keys():
-        print 'subscribeToAttribute(%s,%s)'%(subscriber.get_name(),att_name)
-        EventsList[att_name] = TAttr(att_name)
-        EventsList[att_name].receivers.append(subscriber)
-        EventsList[att_name].event_id = self.dp.subscribe_event(att,PyTango.EventType.CHANGE_EVENT,GlobalCallback,[],True)
-        EventsList[att_name].dev_name = att_name.rsplit('/',0)
-        AttributesList[att_name]=None #it could be done inside EventsList?!?!? ... or could AttributeList substitute EventsList?
+    #if not att_name in EventsList.keys():
+        #print 'subscribeToAttribute(%s,%s)'%(subscriber.get_name(),att_name)
+        #EventsList[att_name] = TAttr(att_name)
+        #EventsList[att_name].receivers.append(subscriber)
+        #EventsList[att_name].event_id = self.dp.subscribe_event(att,PyTango.EventType.CHANGE_EVENT,GlobalCallback,[],True)
+        #EventsList[att_name].dev_name = att_name.rsplit('/',0)
+        #AttributesList[att_name]=None #it could be done inside EventsList?!?!? ... or could AttributeList substitute EventsList?
         
-        #It will not be initialized here ... as it differs in DevChild an DevsList
-        #EventsList[att_name].dp = self.dp
-        if att=='State': #DevsList should substitute that
-            StatesList[EventsList[att_name].dev_name]=PyTango.DevState.UNKNOWN
+        ##It will not be initialized here ... as it differs in DevChild an DevsList
+        ##EventsList[att_name].dp = self.dp
+        #if att=='State': #DevsList should substitute that
+            #StatesList[EventsList[att_name].dev_name]=PyTango.DevState.UNKNOWN
             
-        print "In ", self.get_name(), "::check_dp_attributes()", ": Listing Device/Attributes in EventsList:"
-        for a,t in EventsList.items(): print "\tAttribute: ",a,"\tDevice: ",t.dev_name,"\n"
-    else:
-        print "In ", self.get_name(), "::check_dp_attributes(",att_name,")", ": This attribute is already in the list, adding composer to receivers list."
-        if not subscriber.get_name() in EventsList[att_name].receivers and not subscriber in EventsList[att_name].receivers:
-            EventsList[att_name].receivers.append(subscriber)
-    pass
+        #print "In ", self.get_name(), "::check_dp_attributes()", ": Listing Device/Attributes in EventsList:"
+        #for a,t in EventsList.items(): print "\tAttribute: ",a,"\tDevice: ",t.dev_name,"\n"
+    #else:
+        #print "In ", self.get_name(), "::check_dp_attributes(",att_name,")", ": This attribute is already in the list, adding composer to receivers list."
+        #if not subscriber.get_name() in EventsList[att_name].receivers and not subscriber in EventsList[att_name].receivers:
+            #EventsList[att_name].receivers.append(subscriber)
+    #pass
 
 def inStatesList(devname):
     print 'In callbacks.inStatesList ...'
@@ -297,11 +297,40 @@ def inEventsList(attname):
     GlobalCallback.lock.acquire()
     value=bool(attname.lower() in EventsList.keys())
     GlobalCallback.lock.release()
-    return bool
+    return value
 
 def getEventFor(attname):
     GlobalCallback.lock.acquire()
     event=EventsList[attname.lower()]
     GlobalCallback.lock.release()
     return event
+
+def getEventItems():
+    GlobalCallback.lock.acquire()
+    result = EventsList.items()
+    GlobalCallback.lock.release()
+    return result
+
+def addTAttr(tattr):
+    try:
+        GlobalCallback.lock.acquire()        
+        att_name = tattr.name.lower()
+        EventsList[att_name] = tattr
+        AttributesList[att_name]=None
+        if att_name.endswith=='/state':
+            StatesList[tattr.dev_name.lower()]=None
+    except: print traceback.format_exc()    
+    finally: GlobalCallback.lock.release()
+    return
+    
+def addReceiver(attribute,receiver):
+    try:
+        GlobalCallback.lock.acquire()        
+        if not receiver.lower() in EventsList[attribute.lower()].receivers:
+            EventsList[attribute.lower()].receivers.append(receiver.lower())
+    except: print traceback.format_exc()
+    finally: GlobalCallback.lock.release()
+    return
+
+
 
