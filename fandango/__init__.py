@@ -58,7 +58,7 @@ try:
 except: print 'Unable to import db module'    
 
 try:
-    from device import Dev4Tango,DevChild,TimedQueue
+    from device import Dev4Tango,TangoEval,TimedQueue
 except: print 'Unable to import device module'
     
 try:
@@ -76,7 +76,7 @@ try:
 except: print 'Unable to import objects module'
 
 try:
-    from linos import shell_command,ping
+    from linos import shell_command,ping,sysargs_to_dict
 except: print 'Unable to import linos module'
 
 try:
