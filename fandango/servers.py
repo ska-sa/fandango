@@ -88,10 +88,10 @@ def get_all_devices(expressions,limit=1000):
     results = []
     db = PyTango.Database()
     for target in expressions:
-        if not target.count('/')==2:
+        if not target.count('/')>=2:
             print 'servers.get_all_devices(%s): device names must have 2 slash characters'%target
             continue
-        td,tf,tm = target.split('/')
+        td,tf,tm = target.split('/')[:3]
         domains = db.get_device_domain(target)
         for d in domains:
             families = db.get_device_family(d+'/'+tf+'/'+tm)
@@ -104,14 +104,21 @@ def get_all_devices(expressions,limit=1000):
 def get_matching_attributes(dev,exprs):
     """ Arguments are device_name,list_of_expressions. """
     result = []
-    [result.extend([a for a in PyTango.DeviceProxy(dev).get_attribute_list() if re.match(expr,a)]) for expr in exprs]
+    for expr in exprs:
+        expr = expr.replace('*','.*') if '*' in expr and '.*' not in expr else expr 
+        result.extend([a for a in PyTango.DeviceProxy(dev).get_attribute_list() if re.match(expr.lower(),a.lower())])
     return result
 
 def get_matching_device_attributes(express):
     """ regexp only allowed in attribute names: Expressions must be in the form [domain_wild/family_wild/member_wild/attribute_regexp] """
     attrs = []
     for e in express:
-        dev,attr = e.rsplit('/',1)
+        if e.count('/')==2: 
+            dev,attr = e,'state'
+        elif e.count('/')==3: 
+            dev,attr = e.rsplit('/',1)
+        else: 
+            raise Exception('Expression must match domain/family/member/attribute shape!: %s'%e)
         for d in get_all_devices([dev]):
             try: attrs.extend([d+'/'+a for a in get_matching_attributes(d,[attr])])
             except: print 'Unable to get attributes for %s'%d
