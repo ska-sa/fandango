@@ -52,6 +52,7 @@ page = lambda s: '<html>%s</html>'%s
 body = lambda s: '<body>%s</body>'%s
 paragraph = lambda s: '<p>%s</p>'%s
 linebreak = '<br>'
+separator = '<hr/>'
 
 ulist = lambda s: '<ul>%s</ul>'%s
 item = lambda s: '<li>%s</li>'%s
@@ -60,7 +61,10 @@ bold = lambda s: '<b>%s</b>'%s
 em = lambda s: '<em>'+str(s)+'</em>'
 
 link = lambda s,url: '<a href="%s">%s</a>' % (url,s)
-title = lambda s,n=1: '<a name="%s"><h%d>%s</h%d></a>' % (s,n,s,n) #<a> allows to make titles linkable
+iname = lambda s: s.replace(' ','').lower()
+iurl = lambda url: '#'+iname(url)
+ilink = lambda s,url: '<a name="%s">%s</a>' % (iname(s),s)
+title = lambda s,n=1: '<a name="%s"><h%d>%s</h%d></a>' % (iname(s),n,s,n) #<a> allows to make titles linkable
 title1 = lambda s: '<h1>%s</h1>'%s
 
 row,cell = (lambda s: '<tr>%s</tr>'%s) , (lambda s: '<td>%s</td>'%s)
