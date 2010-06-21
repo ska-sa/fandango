@@ -160,6 +160,12 @@ def searchCl(exp,seq):
     return re.search(exp.lower(),seq.lower())
 clsearch = searchCl #For backward compatibility
 
+def toRegexp(exp):
+    """ Replaces * by .* and ? by . in the given expression. """
+    exp = exp.replace('*','.*') if '*' in exp and '.*' not in exp else exp
+    exp = exp.replace('?','.') if '?' in exp and not any(s in exp for s in (')?',']?','}?')) else exp
+    return exp
+
 ########################################################################
 ## Methods for identifying types        
 ########################################################################
