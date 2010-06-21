@@ -52,7 +52,7 @@ page = lambda s: '<html>%s</html>'%s
 body = lambda s: '<body>%s</body>'%s
 paragraph = lambda s: '<p>%s</p>'%s
 linebreak = '<br>'
-separator = '<hr/>'
+separator = '<hr>'
 
 ulist = lambda s: '<ul>%s</ul>'%s
 item = lambda s: '<li>%s</li>'%s
