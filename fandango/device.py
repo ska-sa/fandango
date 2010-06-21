@@ -234,6 +234,106 @@ class TimedQueue(list):
         return False
     pass
 
+
+
+
+
+
+
+
+##############################################################################################################
+## Tango formula evaluation
+import dicts,servers
+
+class TangoEval(object):
+    """ Class with methods copied from PyAlarm """
+    def __init__(self,formula='',launch=True,trace=False):
+        self.formula = formula
+        self.variables = []
+        self.proxies = servers.ProxiesDict()
+        self.previous = dicts.CaselessDict()
+        self.result = None
+        self.trace = trace
+        if self.formula and launch: 
+            self.eval()
+            if not self.trace: 
+                print 'TangoEval: result = %s' % self.result
+        return
+        
+    def parse_variables(self,formula):
+        ''' This method parses alarm declarations in the following formats:
+        TAG1: dom/fam/memb/attrib >= V1 #A comment
+        TAG2: d/f/m/a1 > V2 and d/f/m/a2 == V3
+        TAG3: d/f/m #Another comment
+        TAG4: d/f/m/State ##A description?, Why not
+        returns a None value if the alarm is not parsable
+        '''            
+        if '#' in formula:
+            formula = formula.split('#',1)[0]
+        if ':' in formula:
+            tag = formula.split(':',1)[0]
+            formula = formula.split(':',1)[1]
+        self.formula = formula
+        #operators = '[><=][=>]?|and|or|in|not in|not'
+        #l_split = re.split(operators,formula)#.replace(' ',''))
+        alnum = '[a-zA-Z0-9-_]+'
+        redev = '(?:'+alnum+':[0-9]+/)?(?:'+'/'.join([alnum]*3)+')' #It matches a device name
+        tango_reg = '('+redev+')'+'/?'+'('+alnum+')?' # It matches an attribute, and returns a (device,attribute) tuple!
+        ##@var all_vars list of tuples with (device,/attribute) name matches
+        self.variables = [(device,attribute) for device,attribute in re.findall(tango_reg,formula) if device]
+        return self.variables
+        
+    def read_attribute(self,device,attribute):
+        try:
+            dp = self.proxies[device]
+            dp.ping()
+            attr_list = [a.name.lower()  for a in dp.attribute_list_query()]
+            if attribute.lower() not in attr_list:
+                raise Exception,'TangoEval_AttributeDoesntExist_%s'%attribute
+            value = dp.read_attribute(attribute).value
+            #values['VALUE_%d'%i]=dp.read_attribute(attribute).value        
+            if self.trace: print 'TangoEval: Readed %s/%s = %s' % (device, attribute,value)
+        except Exception,e:
+            print 'TangoEval: ERROR! Unable to get value for attribute %s/%s: %s' % (device,attribute,e)
+            value = None
+        return value
+    
+    def eval(self,formula=None,previous=None):
+        ''' Evaluates the formula of the given alar; if True returns the values of the read attributes '''
+        self.formula = (formula or self.formula).strip()
+        self.previous = previous or self.previous
+        values = {}
+        findables = re.findall('find\(([^)]*)\)',self.formula)
+        for target in findables:
+            res = str([d.lower() for d in servers.get_matching_device_attributes([target.replace('"','').replace("'",'')])])
+            self.formula = self.formula.replace("find(%s)"%target,res).replace('"','').replace("'",'')
+            if self.trace: print 'TangoEval: Replacing with results for %s ...%s'%(target,res)
+        
+        self.parse_variables(self.formula)
+        if self.trace: print 'TangoEval: variables in formula are %s' % self.variables
+        source = self.formula #It will be modified on each iteration        
+        for device,attribute in self.variables:
+            var_name = (device+'/'+attribute).replace('/','_').replace('-','_').replace('.','_').replace(':','_').lower()
+            self.previous[var_name] = self.read_attribute(device,attribute or 'State')
+            values[device+'/'+attribute] = self.previous[var_name]
+            source = source.replace(device+('/'+attribute if attribute else ''),var_name,1)
+
+        if self.trace: print 'TangoEval: formula = %s; Values = %s' % (source,dict(self.previous))
+        _locals = {}
+        [_locals.__setitem__(str(v),v) for v in PyTango.DevState.values.values()]
+        [_locals.__setitem__(str(q),q) for q in PyTango.AttrQuality.values.values()]
+        _locals['str2epoch'] = lambda *args: time.mktime(time.strptime(*args))
+        _locals['time'] = time
+        _locals['now'] = time.time()        
+
+        self.result = eval(source,dict(self.previous),_locals)
+        if self.trace: print 'TangoEval: result = %s' % self.result
+        return self.result
+    pass
+
+##############################################################################################################
+## DevChild ... DEPRECATED
+
 class DevChild(Dev4Tango):
     """
     Inherit from this class, it provides EventManagement, Dev4Tango, log.Logger, objects.Object and more ...
