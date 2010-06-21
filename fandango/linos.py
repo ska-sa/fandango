@@ -135,7 +135,10 @@ def timefun(fun):
 import sys
 
 def sysargs_to_dict(defaults=[]):
-    '''defaults is the list of anonymous arguments to accept'''
+    ''' 
+    It parses the command line arguments into an understandable dict
+    defaults is the list of anonymous arguments to accept
+    '''
     i,n,result = 0,0,{}
     defargs,args = [],sys.argv[1:]
     
@@ -165,6 +168,7 @@ def arg_to_bool(arg):
         return bool(arg)
 
 def expand_args_to_list(args,type_=int):
+  """ it generates a list of args from a sequence like 1,3,5 or 3-7 """
   result = []
   for arg in args.split(',' in args and ',' or ' '):
     if type_ is int and '-' in arg:
