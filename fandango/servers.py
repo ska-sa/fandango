@@ -847,7 +847,7 @@ class ServersDict(CaselessDict,Object):
         return done
             
     def stop_all_servers(self): 
-        return self.stop_servers(self.keys())
+        return self.stop_servers(self.keys())    
             
     def restart_servers(self,servers_list=None,wait=5.):
         '''Performs stop_servers followed by start_servers.'''
@@ -857,6 +857,39 @@ class ServersDict(CaselessDict,Object):
         threading.Event().wait(wait)
         self.start_servers(servers_list)
         return
+        
+    def kill_servers(self,servers_list):
+        '''
+        Kills a list of SERVERs by sending a HardKillServer to the Starter of their hosts.
+        '''
+        done = False
+        if servers_list is None: servers_list = self.keys()
+        elif type(servers_list) not in [list,set,tuple]:
+            servers_list = [servers_list]
+        new_servers = [s for s in servers_list if s not in self]
+        if new_servers:
+            self.check_servers_names(new_servers)
+            self.load_from_servers_list(new_servers)        
+        for server_name in servers_list:
+            server_name = self[server_name].name
+            self.log.info( 'KillingServer '+server_name)
+            try:
+                host = self[server_name].host
+                starter = self.proxies['tango/admin/%s'%host]
+                starter.HardKillServer(server_name)
+                done = True
+            except Exception,e:
+                self.log.error('Exception in kill_servers(%s): %s'%(server_name,str(e)))
+                        
+        hosts = [self[s].host for s in servers_list if s in self]
+        for host in hosts:
+            if host:
+                try:
+                    starter = self.proxies['tango/admin/%s'%host]
+                    starter.UpdateServersInfo()
+                except Exception,e:
+                    self.log.warning('Unable to contact with Starter in host %s: %s' % (host,e))
+        return done        
             
     def hard_kill(self,name):
         print 'in hard_kill(%s)'%name
