@@ -37,6 +37,8 @@
 
 import operator
 import re
+import time,datetime
+
 from functools import partial
 from itertools import count,cycle,repeat,chain,groupby,islice,imap,starmap
 from itertools import dropwhile,takewhile,ifilter,ifilterfalse,izip,combinations,permutations,product
@@ -221,3 +223,51 @@ def toList(val,default=None,check=isSequence):
         return val
     
 toSequence = toList
+
+
+########################################################################
+## Time conversion
+########################################################################
+
+def now():
+    return time.time()
+
+def time2tuple(epoch=None):
+    if epoch is None: epoch = now()
+    return time.localtime(epoch)
+    
+def tuple2time(tup):
+    return time.mktime(tup)
+
+def date2time(date):
+    return tuple2time(date.timetuple())
+
+def date2str(date):
+    #return time.ctime(date2time(date))
+    return time.strftime('%Y-%m-%d %H:%M:%S',time2tuple(date2time(date)))
+
+def time2date(epoch=None):
+    if epoch is None: epoch = now()
+    return datetime.datetime.fromtimestamp(date)
+
+def time2str(epoch=None,cad='%Y-%m-%d %H:%M'):
+    if epoch is None: epoch = now() 
+    return time.strftime(cad,time2tuple(epoch))
+    
+def str2time(seq,cad=''):
+    """ Date must be in ((Y-m-d|d/m/Y) (H:M[:S]?)) format"""
+    if not cad:
+        date = '%Y-%m-%d' if '-' in seq else '%d/%m/%Y'
+        hour =  '%H:%M:%S' if seq.count(':')==2 else '%H:%M'
+        cad = date+' '+hour
+    return time.mktime(time.strptime(seq,cad))
+
+def time2gmt(epoch=None):
+    if epoch is None: epoch = now()
+    return tuple2time(time.gmtime(epoch))
+    
+def timezone():
+    t = now()
+    return int(t-time2gmt(t))/3600
+    
+
