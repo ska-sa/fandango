@@ -666,6 +666,7 @@ class ReversibleDict(object):#dict):
     def fromkeys(self, iterable, value=None): raise Exception,'NotImplemented!'
     def pop(self, key, def_val=None): raise Exception,'NotImplemented!'        
     
+    
 ##################################################################################################
     
 """
