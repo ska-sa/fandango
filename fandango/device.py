@@ -54,6 +54,9 @@ from excepts import *
 import callbacks
 from callbacks import *
 
+from arrays import TimedQueue
+from functional import *
+
 if 'Device_4Impl' not in dir(PyTango):
     PyTango.Device_4Impl = PyTango.Device_3Impl
 
@@ -63,12 +66,124 @@ try:
 except:
     TangoDatabase = None
     
+########################################################################################
+## Methods for managing attribute lists    
+    
 def attr2str(attr_value):
     att_name = '%s='%attr_value.name if hasattr(attr_value,'name') else ''
     if hasattr(attr_value,'value'):
         return '%s%s(%s)' %(att_name,type(attr_value.value).__name__,attr_value.value)
     else: 
         return '%s%s(%s)' %(att_name,type(attr_value).__name__,attr_value)
+    
+def get_matching_attributes(dev,exprs,invert=False):
+    """ Returns all matched attributes from a device """
+    result = []
+    for a in PyTango.DeviceProxy(dev).get_attribute_list():
+        for expr in exprs:
+            if fun.xor(invert,re.match(expr,a)):
+                result.append(a)
+    return result
+            
+def get_distinct_devices(attrs):
+    """ It returns a list with the distinct device names appearing in a list """
+    return sorted(list(set(a.rsplit('/',1)[0] for a in attrs)))            
+            
+def get_distinct_domains(attrs):
+    """ It returns a list with the distinc member names appearing in a list """
+    return sorted(list(set(a.split('/')[0].split('-')[0] for a in attrs)))            
+
+def get_distinct_families(attrs):
+    """ It returns a list with the distinc member names appearing in a list """
+    return sorted(list(set(a.split('/')[1].split('-')[0] for a in attrs)))            
+
+def get_distinct_members(attrs):
+    """ It returns a list with the distinc member names appearing in a list """
+    return sorted(list(set(a.split('/')[2].split('-')[0] for a in attrs)))            
+
+def get_distinct_attributes(attrs):
+    """ It returns a list with the distinc attribute names (excluding device) appearing in a list """
+    return sorted(list(set(a.rsplit('/',1)[-1] for a in attrs)))
+
+def reduce_distinct(group1,group2):
+    """ It returns a list of (device,domain,family,member,attribute) keys that appear in group1 and not in group2 """
+    vals,rates = {},{}
+    try:
+        target = 'devices'
+        k1,k2 = get_distinct_devices(group1),get_distinct_devices(group2)
+        vals[target] = [k for k in k1 if k not in k2]
+        rates[target] = float(len(vals[target]))/(len(k1))
+    except: vals[target],rates[target] = [],0
+    try:
+        target = 'domains'
+        k1,k2 = get_distinct_domains(group1),get_distinct_domains(group2)
+        vals[target] = [k for k in k1 if k not in k2]
+        rates[target] = float(len(vals[target]))/(len(k1))
+    except: vals[target],rates[target] = [],0
+    try:
+        target = 'families'
+        k1,k2 = get_distinct_families(group1),get_distinct_families(group2)
+        vals[target] = [k for k in k1 if k not in k2]
+        rates[target] = float(len(vals[target]))/(len(k1))
+    except: vals[target],rates[target] = [],0
+    try:
+        target = 'members'
+        k1,k2 = get_distinct_members(group1),get_distinct_members(group2)
+        vals[target] = [k for k in k1 if k not in k2]
+        rates[target] = float(len(vals[target]))/(len(k1))
+    except: vals[target],rates[target] = [],0
+    try:
+        target = 'attributes'
+        k1,k2 = get_distinct_attributes(group1),get_distinct_attributes(group2)
+        vals[target] = [k for k in k1 if k not in k2]
+        rates[target] = float(len(vals[target]))/(len(k1))
+    except: vals[target],rates[target] = [],0
+    return first((vals[k],rates[k]) for k,r in rates.items() if r == max(rates.values()))
+ 
+
+########################################################################################
+            
+########################################################################################
+## Methods for checking device/attribute availability
+            
+def check_device(dev,attribute=None,command=None):
+    """ 
+    Command may be 'StateDetailed' for testing HdbArchivers 
+    It will return True for devices ok, False for devices not running and None for unresponsive devices.
+    """
+    try:
+        dp = PyTango.DeviceProxy(dev)
+        dp.ping()
+    except:
+        return False
+    try:
+        if attribute: dp.read_attribute(attribute)
+        elif command: dp.command_inout(command)
+        else: dp.state()
+        return True
+    except:
+        return None            
+
+def check_attribute(attr,readable=False):
+    """ checks if attribute is available.
+    :param readable: Whether if it's mandatory that the attribute returns a value or if it must simply exist.
+    """
+    try:
+        #PyTango.AttributeProxy(attr).read()
+        dev,att = attr.lower().rsplit('/',1)
+        assert att in [str(s).lower() for s in PyTango.DeviceProxy(dev).get_attribute_list()]
+        try: 
+            attvalue = PyTango.AttributeProxy(attr).read()
+            return None if readable and attvalue.quality == PyTango.AttrQuality.ATTR_INVALID else attvalue
+        except Exception,e: 
+            return None if readable else e
+    except:
+        return None    
+
+########################################################################################
+
+########################################################################################
+## Device servers template
 
 class Dev4Tango(PyTango.Device_4Impl,log.Logger):
     """
@@ -191,55 +306,6 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
             self.db.put_device_property(self.get_name(),{key:isinstance(value,list) and value or [value]})                
     ##@}
         
-class TimedQueue(list):
-    """ A FIFO that keeps all the values introduced at least for a given time.
-    Applied to some device servers, to force States to be kept at least a minimum time.
-    Previously named as device.StateQueue
-    pop(): The value is removed only if delete_time has been reached.
-    at least 1 value is always kept in the list
-    """
-    def __init__(self,arg=None):
-        """ Initializes the list with a sequence or an initial value. """
-        if arg is None:
-            list.__init__(self)
-        elif operator.isSequenceType(arg):
-            list.__init__(self,arg)
-        else:
-            list.__init__(self)
-            self.append(arg,1)
-    def append(self,obj,keep=15):
-        """ Inserts a tuple with (value,insert_time,delete_time=now+keep) """
-        now=time.time()
-        l=(obj,now,now+keep)
-        list.append(self,l)
-    def pop(self,index=0):
-        """ Returns the indicated value, or the first one; but removes only if delete_time has been reached.
-        All values are returned at least once.
-        When the queue has only a value, it is not deleted.
-        """
-        if not self: return None #The list is empty
-        now=time.time()
-        s,t1,t2 = self[index]
-        if now<t2 or len(self)==1:
-            return s
-        else:
-            return list.pop(self,index)[0]
-    def index(self,obj):
-        for i in range(len(self)): 
-            if self[i][0]==obj: return i
-        return None
-    def __contains__(self,obj):
-        for t in self: 
-            if t[0]==obj: return True
-        return False
-    pass
-
-
-
-
-
-
-
 
 ##############################################################################################################
 ## Tango formula evaluation
