@@ -18,6 +18,26 @@ Out[77]:
 </pre>
 """
 
+import time,sys,os,re
+import fandango.functional as fun
+
+
+def listdir(folder,mask='.*',files=False,folders=False):
+    try:
+        if folders and not files:
+            vals = os.walk(folder).next()[1]
+        elif files and not folders:
+            vals = os.walk(folder).next()[2]
+        else:
+            vals = os.listdir(folder)
+        if mask:
+            return [f for f in vals if re.match(fun.toRegexp(mask),f)]
+        else:
+            return vals
+    except Exception,e:
+        print e
+        raise Exception('FolderDoesNotExist',folder)
+
 def shell_command(*commands, **keywords):
     """Executes a list of commands linking their stdin and stdouts
     @param commands each argument is interpreted as a command
