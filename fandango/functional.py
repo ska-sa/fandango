@@ -56,8 +56,9 @@ def first(seq):
     except Exception,e: 
         try: 
             return seq.next()
-        except:
-            raise e #if .next() also doesn't work throw unsubscriptable exception
+        except Exception,d:
+            raise d
+            #raise e #if .next() also doesn't work throw unsubscriptable exception
     return
 
 def last(seq,MAX=1000):
@@ -221,8 +222,11 @@ def toList(val,default=None,check=isSequence):
         return [val]
     else: 
         return val
-    
 toSequence = toList
+
+def list2str(seq,MAX_LENGTH=80):
+    s = str(seq)
+    return s if len(s)<MAX_LENGTH else '%s...%d]'%(s[:MAX_LENGTH-4],len(seq))
 
 
 ########################################################################
