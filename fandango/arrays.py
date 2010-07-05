@@ -142,6 +142,50 @@ if __name__ == '__main__':
     doctest.testmod()
 
 
+class TimedQueue(list):
+    """ A FIFO that keeps all the values introduced at least for a given time.
+    Applied to some device servers, to force States to be kept at least a minimum time.
+    Previously named as device.StateQueue
+    pop(): The value is removed only if delete_time has been reached.
+    at least 1 value is always kept in the list
+    """
+    def __init__(self,arg=None):
+        """ Initializes the list with a sequence or an initial value. """
+        if arg is None:
+            list.__init__(self)
+        elif operator.isSequenceType(arg):
+            list.__init__(self,arg)
+        else:
+            list.__init__(self)
+            self.append(arg,1)
+    def append(self,obj,keep=15):
+        """ Inserts a tuple with (value,insert_time,delete_time=now+keep) """
+        now=time.time()
+        l=(obj,now,now+keep)
+        list.append(self,l)
+    def pop(self,index=0):
+        """ Returns the indicated value, or the first one; but removes only if delete_time has been reached.
+        All values are returned at least once.
+        When the queue has only a value, it is not deleted.
+        """
+        if not self: return None #The list is empty
+        now=time.time()
+        s,t1,t2 = self[index]
+        if now<t2 or len(self)==1:
+            return s
+        else:
+            return list.pop(self,index)[0]
+    def index(self,obj):
+        for i in range(len(self)): 
+            if self[i][0]==obj: return i
+        return None
+    def __contains__(self,obj):
+        for t in self: 
+            if t[0]==obj: return True
+        return False
+    pass
+
+
 class CSVArray:
       
     def size(self):
@@ -213,7 +257,7 @@ class CSVArray:
                     row2 = [str(r).strip() for r in row] 
                     if i == header: 
                         headers = [s.lower() for s in row2]
-                    elif i>header and filters: 
+                    elif i>header and filters: #In all rows excepting header it is checked that the filter is matched for any column in filters
                         check = all( (k not in headers or re.match(f,row2[headers.index(k)].lower()) ) for k,f in filters.items())
                     if i<=header or not filters or not rows or check:
                         rows.append(row2)                        
