@@ -129,8 +129,13 @@ class FriendlyDB(log.Logger):
         @param export If it's True, it returns directly the values instead of a cursor
         @return the executed cursor, values can be retrieved by executing cursor.fetchall()
         '''
-        q=self.getCursor()
-        q.execute(query)
+        try:
+            q=self.getCursor()
+            q.execute(query)
+        except:
+            self.renewMySQLConnection()
+            q=self.getCursor()
+            q.execute(query)            
         return not export and q or self.tuples2lists(q.fetchall())
    
     def Select(self,what,tables,clause='',group='',order='',limit='',distinct=False,asDict=False,trace=False):
