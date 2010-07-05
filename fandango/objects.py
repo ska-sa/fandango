@@ -68,57 +68,71 @@ def Property(fget=None,fset=None,fdel=None,doc=None):
 
 
 class Singleton(object):
-    """by MarcSantiago from http://code.activestate.com/recipes/52558/
-    This class allows Singleton objects
-    The __new__ method is overriden to force Singleton behaviour.
-    The Singleton is created for the lowest subClass.
+    """This class allows Singleton objects overriding __new__ and renaming __init__ to init_single
+    The __new__ method is overriden to force Singleton behaviour, the Singleton is created for the lowest subClass.
     @warning although __new__ is overriden __init__ is still being called for each instance=Singleton()
+    """   
+    ## Singleton object
+    __instance = None     # the one, true Singleton, private members cannot be read directly
+    __dumb_init = (lambda self,*p,**k:None)
     
-    Working Example of Usage:
-    class Prova(objects.Singleton):
-        __instantiated__ = 0
-        def __init__(self,my_id):
-            if self.__class__.__instantiated__:
-                print 'already instantiated!'
-            else:
-                self.__class__.__instantiated__+=1
-                print 'first initialization'
-                self.name = '%s' % my_id
-            return
+    def __new__(cls, *p, **k):
+        if cls != type(cls.__instance):
+            __instance = object.__new__(cls)
+            #srubio: added init_single check to prevent redundant __init__ calls
+            if hasattr(cls,'__init__') and cls.__init__ != cls.__dumb_init:
+                setattr(cls,'init_single',cls.__init__)
+                setattr(cls,'__init__',cls.__dumb_init)  #Needed to avoid parent __init__ methods to be called
+            if hasattr(cls,'init_single'): 
+                cls.init_single(__instance,*p,**k) #If no __init__ or init_single has been defined it may trigger an object.__init__ warning!
+            cls.__instance = __instance #Done at the end to prevent failed __init__ to create singletons
+        return cls.__instance
+    
+    @classmethod
+    def get_singleton(cls):
+        return cls.__instance
+
+class SingletonMap(object):
+    """This class allows distinct Singleton objects for each args combination.
+    The __new__ method is overriden to force Singleton behaviour, the Singleton is created for the lowest subClass.
+    @warning although __new__ is overriden __init__ is still being called for each instance=Singleton()
     """
     
     ## Singleton object
-    _the_instance = None     
-    #__single = None # the one, true Singleton, private members cannot be read directly
+    __instances = {} # the one, true Singleton, private members cannot be read directly
+    __dumb_init = (lambda self,*p,**k:None)    
     
     def __new__(cls, *p, **k):
-        """
-        Check to see if a __single exists already for this class
-        Compare class types instead of just looking for None so
-        that subclasses will create their own __single objects
-        @note __single must be private or protected (_the_instance) ?!?!
-        """
-        if cls != type(cls._the_instance):
-            #cls.__single = object.__new__(cls, *args, **kwargs)
-            cls._the_instance = object.__new__(cls, *p, **k)
-            #srubio: added init_single check
-            if 'init_single' in cls.__dict__: 
-                cls._the_instance.init_single(*p,**k)       
-                #cls.__single.init_single(*p,**k)            
-            else: 
-                cls._the_instance.init(*p,**k)
-                #cls.__single.init(*p,**k)
-        return cls._the_instance #cls.__single
+        key = cls.parse_instance_key(*p,**k)
+        if cls != type(cls.__instances.get(key)):
+            __instance = object.__new__(cls)
+            __instance.__instance_key = key
+            #srubio: added init_single check to prevent redundant __init__ calls
+            if hasattr(cls,'__init__') and cls.__init__ != cls.__dumb_init:
+                setattr(cls,'init_single',cls.__init__)
+                setattr(cls,'__init__',cls.__dumb_init) #Needed to avoid parent __init__ methods to be called
+            if hasattr(cls,'init_single'): 
+                cls.init_single(__instance,*p,**k) #If no __init__ or init_single has been defined it may trigger an object.__init__ warning!
+            cls.__instances[key] = __instance
+        return cls.__instances[key]
+            
+    @classmethod
+    def get_singleton(cls,*p,**k):
+        key = cls.parse_instance_key(*p,**k)
+        return cls.__instances[key]
     
-    def init(self, *p,**k):
-        pass 
-        
-    #def __init__(self,name=None):
-        #self.name = name
-    #def _display(self):
-        #print self.name,id(self),type(self)
+    @classmethod
+    def get_singletons(cls):
+        return cls.__instances       
+      
+    @classmethod
+    def parse_instance_key(cls,*p,**k):
+        return '%s(*%s,**%s)' % (cls.__name__,list(p),list(sorted(k.items())))
     
+    def get_instance_key(self):
+        return self.__instance_key
    
+
 class Object(object):
     """
     This class solves some problems when an object inherits from multiple classes
