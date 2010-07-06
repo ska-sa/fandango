@@ -89,7 +89,7 @@ class Singleton(object):
         return cls.__instance
     
     @classmethod
-    def get_singleton(cls):
+    def get_singleton(cls,*p,**k):
         return cls.__instance or cls(*p,**k)
 
 class SingletonMap(object):
