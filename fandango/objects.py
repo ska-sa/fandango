@@ -119,7 +119,7 @@ class SingletonMap(object):
     @classmethod
     def get_singleton(cls,*p,**k):
         key = cls.parse_instance_key(*p,**k)
-        return cls.__instances[key]
+        return cls.__instances.get(key,cls(*p,**k))
     
     @classmethod
     def get_singletons(cls):
