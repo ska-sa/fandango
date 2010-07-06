@@ -68,4 +68,32 @@ title = lambda s,n=1: '<a name="%s"><h%d>%s</h%d></a>' % (iname(s),n,s,n) #<a> a
 title1 = lambda s: '<h1>%s</h1>'%s
 
 row,cell = (lambda s: '<tr>%s</tr>'%s) , (lambda s: '<td>%s</td>'%s)
-table = lambda s: '<table border=1>'+'\n'.join([row(''.join([cell('%s'%c) for c in r])) for r in s])+'</table>'
+table = lambda s: '<table border=1>\n'+'\n'.join([row(''.join([(cell('%s'%c) if i and j else cell(bold('%s'%c))) for j,c in enumerate(r)])) for i,r in enumerate(s)])+'\n</table>'
+
+def dicts2table(dcts,keys=None,formatter=None):
+    """
+    :param dcts:  a list of dictionaries
+    :param keys: an alternative list of keys
+    """
+    if not keys: keys = sorted(set(k for k in dct.keys() for dct in dcts))
+    if not formatter: formatter = lambda s:s
+    lines = [keys,]
+    for dct in dcts:
+        lines.append([formatter(dct.get(k,'')) for k in keys])
+    return table(lines)
+    
+def dict2dict2table(seq,keys=None,formatter=None):
+    """
+    :param seq: a nested dictionary {:{}}
+    :param keys:  a list of header names
+    """
+    if not keys: keys = [""]+sorted(set(k for v in seq.values() for k in v.keys()))
+    if not formatter: formatter = lambda s:s
+    lines = [keys,]
+    for k,v in sorted(seq.items()):
+        line = [k]
+        for k in keys[1:]:
+            line.append(formatter(v.get(k,'')))
+        lines.append(line)
+    return table(lines)
+    
