@@ -90,7 +90,7 @@ class Singleton(object):
     
     @classmethod
     def get_singleton(cls):
-        return cls.__instance
+        return cls.__instance or cls(*p,**k)
 
 class SingletonMap(object):
     """This class allows distinct Singleton objects for each args combination.
