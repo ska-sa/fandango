@@ -141,6 +141,7 @@ if __name__ == '__main__':
     import doctest
     doctest.testmod()
 
+import time
 
 class TimedQueue(list):
     """ A FIFO that keeps all the values introduced at least for a given time.
