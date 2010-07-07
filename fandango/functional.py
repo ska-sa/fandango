@@ -262,8 +262,8 @@ def str2time(seq,cad=''):
     """ Date must be in ((Y-m-d|d/m/Y) (H:M[:S]?)) format"""
     if not cad:
         date = '%Y-%m-%d' if '-' in seq else '%d/%m/%Y'
-        hour =  '%H:%M:%S' if seq.count(':')==2 else '%H:%M'
-        cad = date+' '+hour
+        hour =  ['',' %H:%M',' %H:%M:%S'][min((seq.count(':'),2))]
+        cad = date+hour
     return time.mktime(time.strptime(seq,cad))
 
 def time2gmt(epoch=None):
