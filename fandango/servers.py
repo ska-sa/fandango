@@ -511,7 +511,7 @@ class ServersDict(CaselessDict,Object):
                     servers_list.pop(i)
                     servers_list.insert(i,good[0])
                 else:
-                    raise 'ServerNotFound_%s' % s
+                    raise Exception('ServerNotFound_%s' % s)
         pass
 
     def get_db_device(self):
@@ -525,13 +525,13 @@ class ServersDict(CaselessDict,Object):
                 self.log.info('get_db_device: creating a new proxy for %s' % dev)
                 return self.proxies[dev]
             else:
-                raise Exception,'ServersDict_UnableToGetDBDevice'
+                raise Exception('ServersDict_UnableToGetDBDevice')
         return
         
     def get_devs_from_db(self,dev_name):
         """ Using a PyTango.Database object returns a list of all devices matching the given name (domain*/family*/member*)"""
         self.log.info('get_devs_from_db(%s)'%dev_name)
-        if dev_name.count('/')<2: raise 'ThisIsNotAValidDeviceName'
+        if dev_name.count('/')<2: raise Exception('ThisIsNotAValidDeviceName')
         domain,family,member = dev_name.split('/',2)
         result = set()
         domains = self.db.get_device_domain(dev_name)
