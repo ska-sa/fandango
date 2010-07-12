@@ -133,7 +133,7 @@ class FriendlyDB(log.Logger):
             q=self.getCursor()
             q.execute(query)
         except:
-            self.renewMySQLConnection()
+            self.renewMySQLconnection()
             q=self.getCursor()
             q.execute(query)            
         return not export and q or self.tuples2lists(q.fetchall())
