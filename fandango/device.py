@@ -55,7 +55,7 @@ import callbacks
 from callbacks import *
 
 from arrays import TimedQueue
-from functional import *
+import functional as fun
 
 if 'Device_4Impl' not in dir(PyTango):
     PyTango.Device_4Impl = PyTango.Device_3Impl
