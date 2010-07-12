@@ -152,6 +152,17 @@ def matchTuples(self,mapping,key,value):
             else:
                 return False
     return True
+        
+def inCl(exp,seq):
+    """ Returns a caseless "in" boolean function """
+    if not seq: 
+        return False
+    if isString(seq):
+        return exp.lower() in seq.lower()
+    elif isSequence(seq) and isString(seq[0]):
+        return any(exp.lower()==s.lower() for s in seq)
+    else:
+        return exp in seq
     
 def matchCl(exp,seq):
     """ Returns a caseless match between expression and given string """
