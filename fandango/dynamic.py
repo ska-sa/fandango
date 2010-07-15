@@ -99,16 +99,26 @@ import time
 import traceback
 from PyTango import AttrQuality
 from PyTango import DevState
-import log
 from excepts import *
 #from .excepts import Catched,ExceptionManager
 #from  . import log
+
+
+try: 
+    import tau
+    USE_TAU = True
+except: 
+    print 'Unable to import tau'
+    USE_TAU=False
+        
+if False and USE_TAU: from tau.core.utils import Logger #DEPRECATED
+else: from log import Logger
 
 print 'LOADING DYNAMIC DEVICE SERVER TEMPLATE, released 2009/11/17'
 if 'Device_4Impl' not in dir(PyTango): PyTango.Device_4Impl = PyTango.Device_3Impl
 if 'DeviceClass' not in dir(PyTango): PyTango.DeviceClass = PyTango.PyDeviceClass
 
-class DynamicDS(PyTango.Device_4Impl,log.Logger):
+class DynamicDS(PyTango.Device_4Impl,Logger):
     ''' Check fandango.dynamic.__doc__ for more information ...'''
 
     ######################################################################################################
@@ -116,7 +126,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
     ######################################################################################################
 
     def __init__(self,cl=None,name=None,_globals=globals(),_locals={}, useDynStates=True):
-        self.call__init__(log.Logger,name,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
+        self.call__init__(Logger,name,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
         self.setLogLevel('DEBUG')
         self.info( ' in DynamicDS.__init__ ...')
         self.trace=False
@@ -139,6 +149,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         self._locals['ATTR'] = lambda _name: self.getAttr(_name)
         self._locals['XAttr'] = lambda _name: self.getXAttr(_name)
         self._locals['XATTR'] = lambda _name: self.getXAttr(_name)
+        self._locals['COMM'] = lambda _name,_argin=None: self.getXCommand(_name,_argin)
         self._locals['ForceAttr'] = lambda a,v=None: self.ForceAttr(a,v)
         self._locals['VAR'] = lambda a,v=None: self.ForceVar(a,v)
         #self._locals['RWVAR'] = (lambda read_exp=(lambda arg=NAME:self.ForceVar(arg)),
@@ -159,8 +170,9 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         self.__prepared = False
         self.myClass = None
         
-        ## This list stores XAttr valid arguments, must be replaced some day by a TauFactory() call
-        self._external_attributes = set()
+        ## This dictionary stores XAttr valid arguments and AttributeProxy/TauAttribute objects
+        self._external_attributes = dict()
+        self._external_commands = dict()
 
         self.time0 = time.time()
         self.simulationMode = False #If it is enabled the ForceAttr command overwrites the values of dyn_values
@@ -179,8 +191,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         if self.useDynStates:
             self.info('useDynamicStates is set, disabling automatic State generation by attribute config.'+
                     'States fixed with set/get_state will continue working.')
-            self.State=self.rawState
-
+            self.State=self.rawState      
         self.call__init__('Device_4Impl' in dir(PyTango) and PyTango.Device_4Impl or PyTango.Device_3Impl,cl,name)
 
     def delete_device(self):
@@ -193,12 +204,6 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
         """
         if self.myClass is None:
             self.myClass = self.get_device_class()
-        #if self.myDeviceProxy is None:
-            ##self.lock.acquire()
-            #self.myDeviceProxy=PyTango.DeviceProxy(self.get_name())
-            ##if not self.myDeviceProxy.is_attribute_polled('State'): #TODO: It forces State attribute polling
-                ##pass
-            ##self.lock.release()
         return
 
     def always_executed_hook(self):
@@ -317,6 +322,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             db.put_device_property(my_name,{'polled_attr':npattrs})
         self.info('Out of check_polled_attributes ...')
 
+        
     #------------------------------------------------------------------------------------------------------
     #   Attribute creators and read_/write_ related methods
     #------------------------------------------------------------------------------------------------------
@@ -367,7 +373,7 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 if bool(aname not in self.dyn_values): 
                     create = True
                     self.dyn_values[aname]=DynamicAttribute()
-                    self.dyn_values[aname].keep = self.KeepAttributes and (not 'no' in self.KeepAttributes) and any(q.lower() in self.KeepAttributes for q in [aname,'*','yes'])
+                    self.dyn_values[aname].keep = self.KeepAttributes and (not 'no' in self.KeepAttributes) and any(q.lower() in self.KeepAttributes for q in [aname,'*','yes','true'])
                     self.dyn_types[aname]=None                
                 else: create = False
 
@@ -542,6 +548,11 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                     if k.lower().strip()!=aname.lower().strip() and isinstance(v.value,Exception): 
                         raise v.value #Exceptions are passed to dependent attributes
                     else: __locals[k]=v.value #.value 
+                    
+            else:
+                for k,v in self.dyn_values.items():
+                    if v.keep and k in formula:
+                        __locals[k]=v.value
             
             self._locals.update({
                 't':time.time()-self.time0,
@@ -554,10 +565,13 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
             if _locals is not None: __locals.update(_locals) #High Priority: variables passed as argument
             
             if not WRITE:
+                self.debug('%s::evalAttr(): Attribute=%s; formula=%s;'%(self.get_name(),aname,formula,))
+                self.debug('__locals: %s'%__locals)
                 result = eval(compiled or formula,self._globals,__locals)
                 return result
             else:
                 self.debug('%s::evalAttr(WRITE): Attribute=%s; formula=%s; VALUE=%s'%(self.get_name(),aname,formula,str(VALUE)))
+                self.debug('__locals: %s'%__locals)
                 return eval(compiled or formula,self._globals,__locals)
 
         except PyTango.DevFailed, e:
@@ -625,22 +639,21 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 result = self.getAttr(aname)
             else:
                 devs_in_server = self.myClass.get_devs_in_server()
-
                 if device in devs_in_server:
                     self.debug('getXAttr accessing a device in the same server ... using getAttr')
                     if aname.lower()=='state': result = devs_in_server[device].get_state()
                     elif aname.lower()=='status': result = devs_in_server[device].get_status() 
                     else: result = devs_in_server[device].getAttr(aname)
                 else:
-                    self.debug('getXAttr creating a DeviceProxy to %s' % device)
-                    dp = PyTango.DeviceProxy(device)
-                    if (device+aname) not in self._external_attributes and \
-                        aname.lower() not in [a.lower() for a in dp.get_attribute_list()]:
-                        raise Exception,'%s_AttributeDoesNotExist'%aname
-                    
-                    self.debug('%s.read_attribute(%s)'%(device or self.get_name(),aname))
-                    attrval = dp.read_attribute(aname)
-                    self._external_attributes.add(device+aname) ## @todo a TauDevice.get_attribute method should be used to check attribute availability
+                    full_name = (device or self.get_name())+'/'+aname
+                    self.debug('getXAttr calling a proxy to %s' % full_name)
+                    if full_name not in self._external_attributes:
+                        if USE_TAU: 
+                            self._external_attributes[full_name] =  tau.Attribute(full_name)
+                            if len(self._external_attributes) == 1: tau.core.utils.Logger.disableLogOutput()
+                        else: self._external_attributes[full_name] = PyTango.AttributeProxy(full_name)
+                    self.debug('%s.read()'%(full_name))
+                    attrval = self._external_attributes[full_name].read()
                     """ #TODO: One day the time/quality of the read attributes should be passed to the client
                     if self.lastAttributeValue is None: self.lastAttributeValue = PyTango._PyTango.AttributeValue()
                     if self.lastAttributeValue.time > attrval.time:
@@ -658,6 +671,47 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 self.myClass.DynDev=self #NOT REDUNDANT: If a call to another device in the same server occurs this pointer could have been modified.
         return result
 
+    def getXCommand(self,cmd,args=None):
+        """
+        Performs an external Command reading, using a DeviceProxy
+        :param cmd_name: a/b/c/cmd
+        """
+        device,cmd = cmd.rsplit('/',1) if '/' in cmd else (self.get_name(),cmd)
+        full_name = device+'/'+cmd
+        self.debug("DynamicDS::getXComm(%s): ..."%(full_name))
+        result = None
+        try:
+            if device == self.get_name():
+                self.info('getXCommand accessing to device itself ...')
+                result = getattr(self,cmd)(args)
+            else:
+                devs_in_server = self.myClass.get_devs_in_server()
+                if device in devs_in_server:
+                    self.debug('getXCommand accessing a device in the same server ...')
+                    if cmd.lower()=='state': result = devs_in_server[device].get_state()
+                    elif cmd.lower()=='status': result = devs_in_server[device].get_status() 
+                    else: result = getattr(devs_in_server[device],cmd)(argin)
+                else:
+                    self.debug('getXCommand calling a proxy to %s' % device)
+                    if full_name not in self._external_commands:
+                        if USE_TAU: 
+                            self._external_commands[full_name] =  tau.Device(device)
+                            if len(self._external_commands)==1: tau.core.utils.Logger.disableLogOutput()
+                        else: self._external_commands[full_name] = PyTango.DeviceProxy(device)
+                    self.debug('getXCommand(%s(%s))'%(full_name,args))
+                    if args in (None,[],()):
+                        result = self._external_commands[full_name].command_inout(cmd)
+                    else:
+                        result = self._external_commands[full_name].command_inout(cmd,args)
+                    #result = self._external_commands[full_name].command_inout(*([cmd,argin] if argin is not None else [cmd]))
+        except:
+            self.last_attr_exception = time.ctime()+': '+ 'Unable to execute %s(%s): %s' % (full_name,args,traceback.format_exc())
+            self.error(self.last_attr_exception)
+            #Exceptions are not re_thrown to allow other commands to be evaluated if this fails.
+        finally:
+            if hasattr(self,'myClass') and self.myClass:
+                self.myClass.DynDev=self #NOT REDUNDANT: If a call to another device in the same server occurs this pointer could have been modified.
+        return result
 
     def get_quality_for_attribute(self,aname,value):
         print 'In get_quality_for_attribute(%s,%s)' % (aname,(str(value)[:10]+'...'))
@@ -820,6 +874,10 @@ class DynamicDS(PyTango.Device_4Impl,log.Logger):
                 except Exception,e:
                     self.error('Unable to remove attribute %s: %s' % (a,str(e)))
         self.dyn_attr()
+        
+        #Updating DynamicCommands (just update of formulas)
+        try: CreateDynamicCommands(type(self),type(self.get_device_class()))
+        except: self.error('CreateDynamicCommands failed: %s'%traceback.format_exc)
 
     #------------------------------------------------------------------
     #    EvaluateFormula command:
@@ -1006,24 +1064,53 @@ DynamicDSTypes={
             'DevVarDoubleArray':DynamicDSType(PyTango.ArgType.DevDouble,['DevVarDoubleArray','list(double','[double','list(float','[float'],lambda l:[float(i) for i in list(l)],4096,1),
             }
             
-def loadDynamicCommands(server,ds,ds_class):
+def CreateDynamicCommands(ds,ds_class):
     """
     By convention all dynamic commands have argin=DevVarStringArray, argout=DevVarStringArray
+    This function will check all dynamic devices declared within this server
+    
     @todo an special declaration should allow to redefine that! DevComm(typein,typeout,code)
     
     The code to add a new command will be something like:
     #srubio: it has been added for backward compatibility
     PyPLC.WriteBit,PyPLCClass.cmd_list['WriteBit']=PyPLC.WriteFlag,[[PyTango.DevVarShortArray, "DEPRECATED, Use WriteFlag instead"], [PyTango.DevVoid, "DEPRECATED, Use WriteFlag instead"]]
     """
-    db = PyTango.Database()
-    classes = db.get_device_class_list(server)
-    devs = [classes[i] for i in range(len(classes)-1) if classes[i+1]==ds_class.__name__]
+    
+    U = PyTango.Util.instance()
+    server = U.get_ds_name()
+    print 'In DynamicDS.CreateDynamicCommands(%s)'%(server)
+    db = PyTango.Database()    
+    #devices = DynamicDSClass('DynamicDS').get_devs_in_server()    
+    classes = list(db.get_device_class_list(server))
+    print 'class = %s; classes = %s' % (ds.__name__,classes)
+    devs = [classes[i] for i in range(len(classes)-1) if classes[i+1]==ds.__name__]    
+    print 'devs = %s'%devs
+    
+    arg_command = [[PyTango.DevVarStringArray, "ARGS"],[PyTango.DevString, "result"],]
+    void_command = [[PyTango.DevVoid, "ARGS"],[PyTango.DevString, "result"],]
+    if not hasattr(ds,'dyn_comms'): ds.dyn_comms = {}
+    
     for dev in devs:
-        dyn_comms = db.get_device_property(dev,['DynamicCommands'])['DynamicCommands']
-        ##@todo implementation will be:
-        # @li parse type of argin/argout from command declaration
-        # @li create a dictionary containing {command:code}
-        # @li assign a lambda to each command: lambda self,argin=None,cmd_name=COMMAND: evalAttr(dyn_comms[cmd_name])
+        print 'In DynamicDS.CreateDynamicCommands(%s.%s)'%(server,dev)
+        prop = db.get_device_property(dev,['DynamicCommands'])['DynamicCommands']
+        lines = [l for l in [d.split('#')[0].strip() for d in prop] if l]
+        ds.dyn_comms.update([(dev+'/'+l.split('=',1)[0].strip(),l.split('=',1)[1].strip()) for l in lines])
+        print 'dyn_comms = %s' % ds.dyn_comms
+        for name,formula in ds.dyn_comms.items():
+            name = name.rsplit('/',1)[-1]
+            print 'In DynamicDS.CreateDynamicCommands(%s.%s.%s())'%(server,dev,name)
+            if name.lower() in [s.lower() for s in dir(ds)]:
+                print ('Dynamic Command %s Already Exists, skipping!!!'%name)
+                continue
+            name = ([n for n in ds_class.cmd_list.keys() if n.lower()==name.lower()] or [name])[0]
+            ds_class.cmd_list[name] = arg_command if 'ARGS' in formula else void_command
+            setattr(ds,name,
+                lambda obj,argin=None,cmd_name=name: 
+                    (obj._locals.__setitem__('ARGS',argin),
+                    str(obj.evalAttr(ds.dyn_comms[obj.get_name()+'/'+cmd_name]))
+                    )[1]
+                )
+            print dir(ds)
     return
     
 class DynamicAttribute(object):
