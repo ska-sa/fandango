@@ -66,7 +66,7 @@ try:
 except: print 'Unable to import dicts module'
 
 try:
-    from dynamic import DynamicDS,DynamicDSClass,DynamicAttribute,DynamicDSTypes
+    from dynamic import DynamicDS,DynamicDSClass,DynamicAttribute,DynamicDSTypes,CreateDynamicCommands
 except: 
     print 'Unable to import dynamic module'
     print traceback.format_exc()
