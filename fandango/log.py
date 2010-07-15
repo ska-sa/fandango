@@ -167,7 +167,7 @@ class Logger(Object):
     def debug(self, msg, *args, **kw):
         try:
             if self._ForcePrint: print 'DEBUG: %s'%msg
-#            logging.getLogger().debug(msg, *args, **kw)
+            #logging.getLogger().debug(msg, *args, **kw)
             self.log_obj.debug(msg, *args, **kw)
         except Exception,e:
             print 'Exception in self.debug! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
