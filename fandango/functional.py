@@ -39,6 +39,7 @@ import operator
 import re
 import time,datetime
 
+from operator import isCallable
 from functools import partial
 from itertools import count,cycle,repeat,chain,groupby,islice,imap,starmap
 from itertools import dropwhile,takewhile,ifilter,ifilterfalse,izip,combinations,permutations,product
@@ -213,7 +214,8 @@ def isDictionary(seq):
     if seq and isSequence(seq) and isSequence(seq[0]):
         if seq[0] and not isSequence(seq[0][0]): return True #First element of tuple must be hashable
     return False
-    
+isMapping = isDictionary
+
 def isIterable(seq):
     """ It includes dicts and listlikes but not strings """
     return hasattr(seq,'__iter__') and not isString(seq)
