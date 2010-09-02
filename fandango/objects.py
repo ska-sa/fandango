@@ -48,8 +48,8 @@ from functional import *
 class Struct(object):
     def __init__(self,dct = None):
         if dct is None: dct = {}
-        elif isSequence(dct): dct = dict.fromkeys(dct)
-        [setattr(self,k,v) for k,v in dct.items()]
+        elif isSequence(dct) and not isDictionary(dct): dct = dict.fromkeys(dct) #isDictionary also matches items lists
+        [setattr(self,k,v) for k,v in (dct.items() if hasattr(dct,'items') else dct)]
     pass
         
 def Property(fget=None,fset=None,fdel=None,doc=None):
