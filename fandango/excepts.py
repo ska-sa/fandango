@@ -77,6 +77,26 @@ import functools
 import contextlib
 import PyTango
 from . import log
+import fandango.functional as fun
+
+def trial(tries,excepts):
+    """ This method executes a try,except clause in a single line
+    :param tries: may be a callable or a list of callables
+    :param excepts: it can be a callable, a list of callables or a map of {ExceptionType:[callables]}
+    """
+    try:
+        tries = fun.toSequence(tries)
+        [t() for t in tries if fun.isCallable(t)]
+    except Exception,e:
+        if fun.isDictionary(excepts):
+            if type(e) in excepts: excepts = excepts.get(type(e))
+            elif type(e).__name__ in excepts: excepts = excepts.get(type(e).__name__)
+            else:
+                candidates = [t for t in excepts if isinstance(e,t)]
+                if candidates: excepts = excepts[candidates[0]]
+                else: excepts = excepts.get('') or excepts.get(None) or []
+        excepts = fun.toSequence(excepts)
+        [x() for x in excepts if fun.isCallable(x)]
 
 def decorator_with_args(decorator):
     '''
