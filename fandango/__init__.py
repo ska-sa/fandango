@@ -62,7 +62,7 @@ try:
 except: print 'Unable to import device module'
     
 try:
-    from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration
+    from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration,SortedDict
 except: print 'Unable to import dicts module'
 
 try:
@@ -76,15 +76,15 @@ try:
 except: print 'Unable to import objects module'
 
 try:
-    from linos import shell_command,ping,sysargs_to_dict
+    from linos import shell_command,ping,sysargs_to_dict,listdir
 except: print 'Unable to import linos module'
 
 try:
-    from log import Logger,LogFilter
+    from log import printf,Logger,LogFilter
 except: print 'Unable to import log module'
 
 try:
-    from excepts import getLastException,getPreviousExceptions,ExceptionWrapper,Catched,Catched2
+    from excepts import trial,getLastException,getPreviousExceptions,ExceptionWrapper,Catched,Catched2
 except: print 'Unable to import excepts module'
 
 try:
