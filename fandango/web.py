@@ -58,6 +58,9 @@ ulist = lambda s: '<ul>%s</ul>'%s
 item = lambda s: '<li>%s</li>'%s
 
 bold = lambda s: '<b>%s</b>'%s
+camel = lambda s: ''.join(r[0].upper()+(r[1:] or '').lower() for r in s.split())
+color = lambda s,color: '<font color="%s">%s</font>'%(camel(color),s)
+colors = "black white yellow blue green red gray fuchsia lime maroon aqua navy olive purple silver teal".split()
 em = lambda s: '<em>'+str(s)+'</em>'
 
 link = lambda s,url: '<a href="%s">%s</a>' % (url,s)
