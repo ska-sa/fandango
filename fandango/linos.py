@@ -94,7 +94,7 @@ def desktop_switcher(period,event=None,iterations=2):
         
 #!/usr/bin/env python2.5
 
-def ping(ips,threaded = False):
+def ping(ips,threaded = False, timeout = 1):
     ''' By Noah Gift's, PyCon 2008
     ips =  ['ivc%02d01'%(i+1) for i in range(16)]
     #ips = ["10.0.1.1", "10.0.1.3", "10.0.1.11", "10.0.1.51"]
@@ -102,7 +102,7 @@ def ping(ips,threaded = False):
     import subprocess
     if isinstance(ips,str): ips=[ips]
     def _ping(ip):
-        return not subprocess.call("ping -c 1 %s" % ip,
+        return not subprocess.call("ping -c 1 -w %d %s" % (int(max((1,timeout))),ip),
                             shell=True,
                             stdout=open('/dev/null', 'w'),
                             stderr=subprocess.STDOUT)     
