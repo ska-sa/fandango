@@ -92,11 +92,8 @@ This Module includes several classes:
 """
 
 import PyTango
-import sys
+import sys,threading,time,traceback
 import inspect
-import threading
-import time
-import traceback
 from PyTango import AttrQuality
 from PyTango import DevState
 from excepts import *
@@ -110,10 +107,19 @@ try:
 except: 
     print 'Unable to import tau'
     USE_TAU=False
-        
 if False and USE_TAU: from tau.core.utils import Logger #DEPRECATED
 else: from log import Logger
-
+    
+import os
+MEM_CHECK = str(os.environ.get('PYMEMCHECK')).lower() == 'true'
+if MEM_CHECK:
+    try: 
+        import guppy
+        HEAPY = guppy.hpy()    
+        HEAPY.setrelheap()    
+    except:
+        MEM_CHECK=False
+        
 print 'LOADING DYNAMIC DEVICE SERVER TEMPLATE, released 2009/11/17'
 if 'Device_4Impl' not in dir(PyTango): PyTango.Device_4Impl = PyTango.Device_3Impl
 if 'DeviceClass' not in dir(PyTango): PyTango.DeviceClass = PyTango.PyDeviceClass
@@ -183,6 +189,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._hook_epoch = 0
         self._cycle_start = 0
         self._total_usage = 0
+        self._last_period = {}
+        self._last_read = {}
         self._read_times = {}
         self._eval_times = {}
 
@@ -470,6 +478,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             self.debug('DynamicDS('+self.get_name()+").read_dyn_attr("+aname+")="+text_result+
                     ", ellapsed %1.2e"%(now-date)+" seconds.\n")
                     #", finished at "+time.ctime(now)+"="+str(now)+", timestamp is %s"%str(date)+", difference is "+str(now-date))
+            self._last_period[aname]=now-self._last_read.get(aname,0)
+            self._last_read[aname]=now
             self._read_times[aname]=now-self._hook_epoch
             self._eval_times[aname]=now-tstart
             self._total_usage += now-self._hook_epoch
@@ -478,15 +488,20 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                 self._cycle_start = now-self._cycle_start
                 self.info('Last complete reading cycle took: %f seconds' % self._cycle_start)
                 for key in self._read_times:
-                    self.info('%s read in %f s; eval in %f s; %f of the usage' % (key, self._read_times[key],self._eval_times[key],self._read_times[key]/self._total_usage))
+                    self.info('%s read after %s s; needed %f s; eval in %f s; %f of the usage' % (key, self._last_period[key],self._read_times[key],self._eval_times[key],self._read_times[key]/self._total_usage))
                 self.info('%f s empty seconds in total; %f of CPU Usage' % (self._cycle_start-self._total_usage,self._total_usage/self._cycle_start))
                 self.info('%f of time used in expressions evaluation' % (sum(self._eval_times.values())/sum(self._read_times.values())))
+                if MEM_CHECK:
+                    h = HEAPY.heap()
+                    self.info(str(h))
                 self._cycle_start = now
                 self._total_usage = 0
                 self.info('-'*80)
         except Exception, e:           
             now=time.time()
             self.dyn_values[aname].update(e,now,PyTango.AttrQuality.ATTR_INVALID) #Exceptions always kept!
+            self._last_period[aname]=now-self._last_read.get(aname,0)
+            self._last_read[aname]=now            
             self._read_times[aname]=now-self._hook_epoch #Internal debugging
             self._eval_times[aname]=now-tstart #Internal debugging
             if aname==self.dyn_values.keys()[-1]: self._cycle_start = now
@@ -566,12 +581,12 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             
             if not WRITE:
                 self.debug('%s::evalAttr(): Attribute=%s; formula=%s;'%(self.get_name(),aname,formula,))
-                self.debug('__locals: %s'%__locals)
+                self.debug('vars in __locals: %s'%__locals.keys())
                 result = eval(compiled or formula,self._globals,__locals)
                 return result
             else:
                 self.debug('%s::evalAttr(WRITE): Attribute=%s; formula=%s; VALUE=%s'%(self.get_name(),aname,formula,str(VALUE)))
-                self.debug('__locals: %s'%__locals)
+                self.debug('vars in __locals: %s'%__locals.keys())
                 return eval(compiled or formula,self._globals,__locals)
 
         except PyTango.DevFailed, e:
