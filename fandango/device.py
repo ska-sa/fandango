@@ -39,35 +39,156 @@
 @todo @warning IMPORTING THIS MODULE IS CAUSING SOME ERRORS WHEN CLOSING PYTHON DEVICE SERVERS,  BE CAREFUL!
 """
 
-import PyTango
-import sys
-import inspect
-import threading
-import time
-import traceback
-import exceptions
-import operator
-from PyTango import AttrQuality
+
+import sys,time,re
+import threading,inspect,traceback,exceptions,operator
+
 import log
+from log import Logger
 import excepts
 from excepts import *
 import callbacks
 from callbacks import *
 
-from arrays import TimedQueue
 import functional as fun
+from objects import Object
+from dicts import CaselessDefaultDict,CaselessDict
+from arrays import TimedQueue
 
+import PyTango
+from PyTango import AttrQuality
 if 'Device_4Impl' not in dir(PyTango):
     PyTango.Device_4Impl = PyTango.Device_3Impl
-
 #TangoDatabase singletone
 try:
     TangoDatabase = PyTango.Database()
 except:
     TangoDatabase = None
     
+####################################################################################################################
+##@name Methods for searching the database with regular expressions
+#@{
+
+metachars = re.compile('([.][*])|([.][^*])|([$^+\-?{}\[\]|()])')
+
+def parse_labels(text):
+    if any(text.startswith(c[0]) and text.endswith(c[1]) for c in [('{','}'),('(',')'),('[',']')]):
+        try:
+            labels = eval(text)
+            return labels
+        except Exception,e:
+            print 'ERROR! Unable to parse labels property: %s'%str(e)
+            return []
+    else:
+        exprs = text.split(',')
+        if all(':' in ex for ex in exprs):
+            labels = [tuple(e.split(':',1)) for e in exprs]
+        else:
+            labels = [(e,e) for e in exprs]  
+        return labels
+        
+def re_search_low(regexp,target): return re.search(regexp.lower(),target.lower())
+def re_match_low(regexp,target): return re.match(regexp.lower(),target.lower())
+
+def get_all_devices(expressions,limit=1000):
+    ''' Returns the list of registered devices (including unexported) that match any of the given wildcars (Regexp not admitted!) '''
+    results = []
+    db = PyTango.Database()
+    for target in expressions:
+        if not target.count('/')>=2:
+            print 'servers.get_all_devices(%s): device names must have 2 slash characters'%target
+            continue
+        td,tf,tm = target.split('/')[:3]
+        domains = db.get_device_domain(target)
+        for d in domains:
+            families = db.get_device_family(d+'/'+tf+'/'+tm)
+            for f in families:
+                members = db.get_device_member((d+'/'+f+'/'+tm))
+                for m in members:
+                    results.append('/'.join((d,f,m)))
+    return results
+                
+def get_matching_attributes(dev,exprs):
+    """ Arguments are device_name,list_of_expressions. """
+    result = []
+    for expr in exprs:
+        expr = expr.replace('*','.*') if '*' in expr and '.*' not in expr else expr 
+        result.extend([a for a in PyTango.DeviceProxy(dev).get_attribute_list() if re.match(expr.lower(),a.lower())])
+    return result
+
+def get_matching_device_attributes(express):
+    """ regexp only allowed in attribute names: Expressions must be in the form [domain_wild/family_wild/member_wild/attribute_regexp] """
+    attrs = []
+    for e in express:
+        if e.count('/')==2: 
+            dev,attr = e,'state'
+        elif e.count('/')==3: 
+            dev,attr = e.rsplit('/',1)
+        else: 
+            raise Exception('Expression must match domain/family/member/attribute shape!: %s'%e)
+        for d in get_all_devices([dev]):
+            try: attrs.extend([d+'/'+a for a in get_matching_attributes(d,[attr])])
+            except: print 'Unable to get attributes for %s'%d
+    return list(set(attrs))
+
+def get_all_models(expressions,limit=1000):
+    ''' It returns all the available Tango attributes matching any of a list of regular expressions.
+    All devices matching expressions must be obtained.
+    For each device only the good attributes are read.
+    '''
+    print 'In servers.get_all_models(%s:"%s") ...' % (type(expressions),expressions)
+    
+    if isinstance(expressions,str): #evaluating expressions ....
+        if any(re.match(s,expressions) for s in ('\{.*\}','\(.*\)','\[.*\]')): expressions = list(eval(expressions))
+        else: expressions = expressions.split(',')
+    elif isinstance(expressions,(USE_TAU and QtCore.QStringList or list,list,tuple,dict)):
+        print 'expressions converted from list ...'
+        expressions = list(str(e) for e in expressions)
+        
+    print 'In get_all_models(%s:"%s") ...' % (type(expressions),expressions)
+    tau_db = USE_TAU and tau.core.TauManager().getFactory()().getDatabase() or PyTango.Database()
+    if 'SimulationDatabase' in str(type(tau_db)):
+      print 'Using a simulated database ...'
+      models = expressions
+    else:
+      all_devs = USE_TAU and tau_db.get_device_exported('*')
+      models = []
+      for exp in expressions:
+          print 'evaluating exp = "%s"' % exp
+          exp = str(exp)
+          devs = []
+          targets = []
+          if exp.count('/')==3: device,attribute = exp.rsplit('/',1)
+          else: device,attribute = exp,'State'
+          
+          if any(c in device for c in '.*[]()+?'):
+              if '*' in device and '.*' not in device: device = device.replace('*','.*')
+              devs = [s for s in all_devs if re_match_low(device,s)]
+          else:
+              devs = [device]
+              
+          print 'servers.get_all_models(): devices matched by %s / %s are %d:' % (device,attribute,len(devs))
+          print '%s' % (devs)
+          for dev in devs:
+              if any(c in attribute for c in '.*[]()+?'):
+                  if '*' in attribute and '.*' not in attribute: attribute = attribute.replace('*','.*')
+                  #tau_dp = tau.core.TauManager().getFactory()().getDevice( 'test/sim/sergi')
+                  try: 
+                      tau_dp = USE_TAU and tau.core.TauManager().getFactory()().getDevice(dev) or PyTango.DeviceProxy(dev)
+                      attrs = [att.name for att in tau_dp.attribute_list_query() if re_match_low(attribute,att.name)]
+                      targets.extend(dev+'/'+att for att in attrs)
+                  except Exception,e: print 'ERROR! Unable to get attributes for device %s: %s' % (dev,str(e))
+              else: targets.append(dev+'/'+attribute)
+          #print 'TauGrid.get_all_models(): targets added by %s are: %s' % (exp,targets)
+          models.extend(targets)
+    models = models[:limit]
+    return models
+              
+#@}
+########################################################################################    
+
 ########################################################################################
-## Methods for managing attribute lists    
+## Methods for managing device/attribute lists    
     
 def attr2str(attr_value):
     att_name = '%s='%attr_value.name if hasattr(attr_value,'name') else ''
@@ -146,12 +267,46 @@ def reduce_distinct(group1,group2):
 ########################################################################################
 ## Methods for checking device/attribute availability
             
-def check_device(dev,attribute=None,command=None):
+def get_device_info(dev):
+    """
+    This method provides an alternative to DeviceProxy.info() for those devices that are not running
+    """
+    vals = PyTango.DeviceProxy('sys/database/2').DbGetDeviceInfo(dev)
+    di = fandango.Struct((k,v) for k,v in zip(('name','ior','level','server','host','started','stopped'),vals[1]))
+    di.exported,di.PID = vals[0]
+    return di
+   
+def check_host(host):
+    """
+    Pings a hostname, returns False if unreachable
+    """
+    import fandango.linos
+    print 'Checking host %s'%host
+    return fandango.linos.ping(host)[host]
+
+def check_starter(host):
+    """
+    Checks host's Starter server
+    """
+    if check_host(host):
+        return check_device('tango/admin/%s'%(host.split('.')[0]))
+    else:
+        return False
+    
+def check_device(dev,attribute=None,command=None,full=False):
     """ 
     Command may be 'StateDetailed' for testing HdbArchivers 
     It will return True for devices ok, False for devices not running and None for unresponsive devices.
     """
     try:
+        if full:
+            info = get_device_info(dev)
+            if not info.exported:
+                return False
+            if not check_host(info.host):
+                return False
+            if not check_device('dserver/%s'%info.server,full=False):
+                return False
         dp = PyTango.DeviceProxy(dev)
         dp.ping()
     except:
@@ -180,7 +335,76 @@ def check_attribute(attr,readable=False):
     except:
         return None    
 
-########################################################################################
+def check_device_list(devices,attribute=None,command=None):
+    """ 
+    This method will check a list of devices grouping them by host and server; minimizing the amount of pings to do.
+    """
+    result = {}
+    from collections import defaultdict
+    hosts = defaultdict(lambda:defaultdict(list))
+    for dev in devices:
+        info = get_device_info(dev)
+        if info.exported:
+            hosts[info.host][info.server].append(dev)
+        else:
+            result[dev] = False
+    for host,servers in hosts.items():
+        if not check_host(host):
+            print 'Host %s failed, discarding %d devices'%(host,sum(len(s) for s in servers.values()))
+            result.update((d,False) for s in servers.values() for d in s)
+        else:
+            for server,devs in servers.items():
+                if not check_device('dserver/%s'%server,full=False):
+                    print 'Server %s failed, discarding %d devices'%(server,len(devs))
+                    result.update((d,False) for d in devs)
+                else:
+                    for d in devs:
+                        result[d] = check_device(d,attribute=attribute,command=command,full=False)
+    return result
+                    
+####################################################################################################################
+## The ProxiesDict class, to manage DeviceProxy pools
+
+class ProxiesDict(CaselessDefaultDict,Object): #class ProxiesDict(dict,log.Logger):
+    ''' Dictionary that stores PyTango.DeviceProxies
+    It is like a normal dictionary but creates a new proxy each time that the "get" method is called
+    An earlier version is used in PyTangoArchiving.utils module
+    This class must be substituted by Tau.Core.TauManager().getFactory()()
+    '''
+    def __init__(self):
+        self.log = Logger('ProxiesDict')
+        self.log.setLogLevel('INFO')
+        #dict.__init__(self)
+        self.call__init__(CaselessDefaultDict,self.__default_factory__)
+    def __default_factory__(self,dev_name):
+        '''
+        Called by defaultdict_fromkey.__missing__ method
+        If a key doesn't exists this method is called and returns a proxy for a given device.
+        If the proxy caused an exception (usually because device doesn't exists) a None value is returned
+        '''        
+        if dev_name not in self.keys():
+            self.log.debug( 'Getting a Proxy for %s'%dev_name)
+            try:
+                dev = PyTango.DeviceProxy(dev_name)
+                #dev = TauManager().getFactory()().getDevice(dev_name)
+            except Exception,e:
+                self.log.warning('Device %s doesnt exist!'%dev_name)
+                dev = None
+        return dev
+            
+    def get(self,dev_name):
+        return self[dev_name]   
+    def get_admin(self,dev_name):
+        '''Adds to the dictionary the admin device for a given device name and returns a proxy to it.'''
+        dev = self[dev_name]
+        class_ = dev.info().dev_class
+        admin = dev.info().server_id
+        return self['dserver/'+admin]
+    def pop(self,dev_name):
+        '''Removes a device from the dict'''
+        if dev_name not in self.keys(): return
+        self.log.debug( 'Deleting the Proxy for %s'%dev_name)
+        return CaselessDefaultDict.pop(self,dev_name)
 
 ########################################################################################
 ## Device servers template
