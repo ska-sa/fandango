@@ -55,10 +55,15 @@ message
 
 """
 
-import logging, weakref
+import logging, weakref, traceback
 from objects import Object
 import warnings
 
+
+def printf(s):
+    # This is a 'lambdable' version of print
+    print s
+    
 class Logger(Object):
     root_inited    = False
 
@@ -84,8 +89,8 @@ class Logger(Object):
         self.log_obj = logging.getLogger(self.full_name)
         self.log_handlers = []
 
-        self._ForcePrint	= False
-        self.__levelAliases	= {'ERROR':self.Error,'WARNING':self.Warning,'INFO':self.Info,'DEBUG':self.Debug}
+        self._ForcePrint    = False
+        self.__levelAliases    = {'ERROR':self.Error,'WARNING':self.Warning,'INFO':self.Info,'DEBUG':self.Debug}
 
         self.parent = None
         self.children = []
@@ -164,48 +169,54 @@ class Logger(Object):
         for handler in other.log_handlers:
             self.addLogHandler(handler)
             
+    def output(self, msg, *args, **kw):
+        self.log_obj.log(Logger.Output, msg, *args, **kw)
+        
+    
     def debug(self, msg, *args, **kw):
         try:
             if self._ForcePrint: print 'DEBUG: %s'%msg
             #logging.getLogger().debug(msg, *args, **kw)
-            self.log_obj.debug(msg, *args, **kw)
+            self.log_obj.debug(str(msg).replace('\r',''), *args, **kw)
         except Exception,e:
             print 'Exception in self.debug! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
-            raise e
-
-    def output(self, msg, *args, **kw):
-        self.log_obj.log(Logger.Output, msg, *args, **kw)
-        
+            print traceback.format_exc()            
+            #raise e
+    
+    
     def info(self, msg, *args, **kw):
-    	try:
+        try:
             if self._ForcePrint: print 'INFO: %s'%msg
-            self.log_obj.info(msg, *args, **kw)
+            self.log_obj.info(str(msg).replace('\r',''), *args, **kw)
         except Exception,e:
-			print 'Exception in self.debug! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
-			raise e
+            print 'Exception in self.info! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
+            print traceback.format_exc()
+            #raise e
      
 
     def warning(self, msg, *args, **kw):
-    	try:
+        try:
             if self._ForcePrint: print 'WARNING: %s'%msg
-            self.log_obj.warning(msg, *args, **kw)
+            self.log_obj.warning(str(msg).replace('\r',''), *args, **kw)
         except Exception,e:
-			print 'Exception in self.debug! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
-			raise e
+            print 'Exception in self.warning! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
+            print traceback.format_exc()
+            #raise e
+            
+    def error(self, msg, *args, **kw):
+        try:
+            if self._ForcePrint: print 'ERROR: %s'%msg
+            self.log_obj.error(str(msg).replace('\r',''), *args, **kw)
+        except Exception,e:
+            print 'Exception in self.error! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
+            print traceback.format_exc()
+            #raise e            
         
 
     def deprecated(self, msg, *args, **kw):
         filename, lineno, func = self.log_obj.findCaller()
         depr_msg = warnings.formatwarning(msg, DeprecationWarning, filename, lineno)
         self.log_obj.warning(depr_msg, *args, **kw)
-
-    def error(self, msg, *args, **kw):
-    	try:
-            if self._ForcePrint: print 'ERROR: %s'%msg
-            self.log_obj.error(msg, *args, **kw)
-        except Exception,e:
-			print 'Exception in self.debug! \ne:%s\nargs:%s\nkw:%s'%(str(e),str(args),str(kw))
-			raise e
 
     def flushOutput(self):
         self.syncLog()
