@@ -270,6 +270,7 @@ def time2date(epoch=None):
 def time2str(epoch=None,cad='%Y-%m-%d %H:%M'):
     if epoch is None: epoch = now() 
     return time.strftime(cad,time2tuple(epoch))
+epoch2str = time2str
     
 def str2time(seq,cad=''):
     """ Date must be in ((Y-m-d|d/m/Y) (H:M[:S]?)) format"""
@@ -278,6 +279,7 @@ def str2time(seq,cad=''):
         hour =  ['',' %H:%M',' %H:%M:%S'][min((seq.count(':'),2))]
         cad = date+hour
     return time.mktime(time.strptime(seq,cad))
+str2epoch = str2time
 
 def time2gmt(epoch=None):
     if epoch is None: epoch = now()
@@ -286,5 +288,12 @@ def time2gmt(epoch=None):
 def timezone():
     t = now()
     return int(t-time2gmt(t))/3600
+
+#Auxiliary methods:
+def ctime2time(time_struct):
+    return (float(time_struct.tv_sec)+1e-6*float(time_struct.tv_usec))
+    
+def mysql2time(mysql_time):
+    return time.mktime(mysql_time.timetuple())
     
 
