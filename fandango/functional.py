@@ -90,11 +90,15 @@ def notNone(arg,default=None):
     """ Returns arg if not None, else returns default. """
     return [arg,default][arg is None]
 
-def join(seqs):
-    """ It returns the sum of several sequences as a list """
+def join(*seqs):
+    """ It returns the a list containing the objects of all given sequences. """
+    if len(seqs)==1 and isSequence(seqs[0]):
+        seqs = seqs
     result = []
-    for seq in seqs:
-        result += list(seq)
+    for seq in seqs: 
+        if isSequence(seq): result.extend(seq)
+        else: result.append(seq)
+    #    result += list(seq)
     return result
     
 
@@ -199,12 +203,19 @@ def isRegexp(seq):
 def isNumber(seq):
     return operator.isNumberType(seq)
     
-def isSequence(seq):
-    """ It excludes Strings and dictionaries """
-    if any(isinstance(seq,t) for t in (list,set,tuple)): return True
-    if isString(seq): return False
-    if hasattr(seq,'items'): return False
-    if hasattr(seq,'__iter__'): return True
+def isSequence(seq,INCLUDE_GENERATORS = True):
+    """ It excludes Strings, dictionaries but includes generators"""
+    if any(isinstance(seq,t) for t in (list,set,tuple)): 
+        return True
+    if isString(seq): 
+        return False
+    if hasattr(seq,'items'): 
+        return False
+    if INCLUDE_GENERATORS:
+        if hasattr(seq,'__iter__'): 
+            return True
+    elif hasattr(seq,'__len__'): 
+        return True
     return False
     
 def isDictionary(seq):
@@ -228,12 +239,16 @@ def str2float(seq):
     """ It returns the first float (x.ye-z) encountered in the string """
     return float(re.search('[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?',seq).group())
 
-def toList(val,default=None,check=isSequence):
-    if not val: 
-        return default or []
+def toList(val,default=[],check=isSequence):
+    if val is None: 
+        return default
+    elif hasattr(val,'__len__') and len(val)==0: #To prevent exceptions due to non evaluable numpy arrays
+        return [] 
     elif not check(val): #You can use (lambda s:isinstance(s,list)) if you want
         return [val]
-    else: 
+    elif not hasattr(val,'__len__'): #It forces the return type to have a fixed length
+        return list(val)
+    else:
         return val
 toSequence = toList
 
