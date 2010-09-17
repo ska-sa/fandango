@@ -1,8 +1,17 @@
 
+PyTango_utils bliss-8.11, 16 Sept 2010
+-------------------------------------
 
+arrays.py: Added offset argument to CSVArray creator
+device.py: Better parsing of get_matching_devices/get_all_devices arguments
+dynamic.py: Added DevState type to dynamic attributes
+dynamic.py: Added default argument to getXAttr to manage return types for exceptions and empty arrays
+functional.py: isSequence, toList, and join methods prepared to work with arrays and generators.
+linos.py: whole file refactored, added methods for getting PID and memory usage of processes using /proc/
+servers.py: Now start/stop_servers w/out argument will start/stop all servers
 
-fandango bliss-1.0, PyTango_utils bliss-8.11, 7 Sept 2010
----------------------------------------------------------
+PyTango_utils bliss-8.11, 7 Sept 2010
+-------------------------------------
 
 Changes on fandango modules:
 
