@@ -120,7 +120,6 @@ if MEM_CHECK:
     except:
         MEM_CHECK=False
         
-print 'LOADING DYNAMIC DEVICE SERVER TEMPLATE, released 2009/11/17'
 if 'Device_4Impl' not in dir(PyTango): PyTango.Device_4Impl = PyTango.Device_3Impl
 if 'DeviceClass' not in dir(PyTango): PyTango.DeviceClass = PyTango.PyDeviceClass
 
@@ -153,8 +152,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._locals={'self':self}
         self._locals['Attr'] = lambda _name: self.getAttr(_name)
         self._locals['ATTR'] = lambda _name: self.getAttr(_name)
-        self._locals['XAttr'] = lambda _name: self.getXAttr(_name)
-        self._locals['XATTR'] = lambda _name: self.getXAttr(_name)
+        self._locals['XAttr'] = lambda _name,default=None: self.getXAttr(_name,default=default)
+        self._locals['XATTR'] = lambda _name,default=None: self.getXAttr(_name,default=default)
         self._locals['COMM'] = lambda _name,_argin=None: self.getXCommand(_name,_argin)
         self._locals['ForceAttr'] = lambda a,v=None: self.ForceAttr(a,v)
         self._locals['VAR'] = lambda a,v=None: self.ForceVar(a,v)
@@ -640,14 +639,16 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         """Evaluates the WRITE part of an Attribute, passing a VALUE."""
         self.evalAttr(aname,WRITE=True,VALUE=VALUE)
 
-    def getXAttr(self,aname):
+    def getXAttr(self,aname,default=None):
         """
         Performs an external Attribute reading, using a DeviceProxy to read own attributes.
         Argument could be: [attr_name] or [device_name](=State) or [device_name/attr_name]
+        
+        :returns: Attribute value or None
         """
         device,aname = ('/' not in aname) and (None,aname) or aname.count('/')==2 and (aname,'State') or aname.rsplit('/',1)
         self.debug("DynamicDS(%s)::getXAttr(%s): ..."%(device or self.get_name(),aname))
-        result = None
+        result = default #Returning an empty list because it is a False iterable value that can be converted to boolean (and False or None cannot be converted to iterable)
         try:
             if not device:
                 self.info('getXAttr accessing to device itself ... using getAttr instead')
@@ -667,7 +668,6 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                             self._external_attributes[full_name] =  tau.Attribute(full_name)
                             if len(self._external_attributes) == 1: tau.core.utils.Logger.disableLogOutput()
                         else: self._external_attributes[full_name] = PyTango.AttributeProxy(full_name)
-                    self.debug('%s.read()'%(full_name))
                     attrval = self._external_attributes[full_name].read()
                     """ #TODO: One day the time/quality of the read attributes should be passed to the client
                     if self.lastAttributeValue is None: self.lastAttributeValue = PyTango._PyTango.AttributeValue()
@@ -677,13 +677,24 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                         self.lastAttributeValue.quality = attrval.quality
                     """
                     result = attrval.value
+                    self.debug('%s.read() = %s ...'%(full_name,str(result)[:40])) 
         except:
-            self.last_attr_exception = time.ctime()+': '+ 'Unable to read_attribute %s from device %s: %s' % (aname,device or self.get_name(),traceback.format_exc())
-            self.error(self.last_attr_exception)
+            msg = 'Unable to read attribute %s from device %s: \n%s' % (str(aname),str(device),traceback.format_exc())
+            print msg
+            self.error(msg)
+            self.last_attr_exception = time.ctime()+': '+ msg
+            #self.last_attr_exception = time.ctime()+': '+ 'Unable to read_attribute %s from device %s: \n%s' % (aname,device or self.get_name(),traceback.format_exc())
             #Exceptions are not re_thrown to allow other commands to be evaluated if this fails.
         finally:
             if hasattr(self,'myClass') and self.myClass:
                 self.myClass.DynDev=self #NOT REDUNDANT: If a call to another device in the same server occurs this pointer could have been modified.
+                
+        #Check added to prevent exceptions due to empty arrays
+        if hasattr(result,'__len__') and not len(result):
+            result = default if hasattr(default,'__len__') else []        
+        elif result is None:
+            result = default
+        self.debug('Out of getXAttr()')
         return result
 
     def getXCommand(self,cmd,args=None):
@@ -1067,6 +1078,7 @@ class DynamicDSType(object):
     pass
 
 DynamicDSTypes={
+            'DevState':DynamicDSType(PyTango.ArgType.DevState,['DevState','long','int'],int),
             'DevLong':DynamicDSType(PyTango.ArgType.DevLong,['DevLong','long','int'],int),
             'DevShort':DynamicDSType(PyTango.ArgType.DevShort,['DevShort','short'],int),
             'DevString':DynamicDSType(PyTango.ArgType.DevString,['DevString','str'],str),
