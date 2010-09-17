@@ -94,6 +94,7 @@ def get_all_devices(expressions,limit=1000):
     ''' Returns the list of registered devices (including unexported) that match any of the given wildcars (Regexp not admitted!) '''
     results = []
     db = PyTango.Database()
+    expressions = fun.toList(expressions)
     for target in expressions:
         if not target.count('/')>=2:
             print 'servers.get_all_devices(%s): device names must have 2 slash characters'%target
@@ -107,6 +108,7 @@ def get_all_devices(expressions,limit=1000):
                 for m in members:
                     results.append('/'.join((d,f,m)))
     return results
+get_matching_devices = get_all_devices
                 
 def get_matching_attributes(dev,exprs):
     """ Arguments are device_name,list_of_expressions. """
