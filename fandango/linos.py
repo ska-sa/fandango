@@ -21,23 +21,6 @@ Out[77]:
 import time,sys,os,re
 import fandango.functional as fun
 
-
-def listdir(folder,mask='.*',files=False,folders=False):
-    try:
-        if folders and not files:
-            vals = os.walk(folder).next()[1]
-        elif files and not folders:
-            vals = os.walk(folder).next()[2]
-        else:
-            vals = os.listdir(folder)
-        if mask:
-            return [f for f in vals if re.match(fun.toRegexp(mask),f)]
-        else:
-            return vals
-    except Exception,e:
-        print e
-        raise Exception('FolderDoesNotExist',folder)
-
 def shell_command(*commands, **keywords):
     """Executes a list of commands linking their stdin and stdouts
     @param commands each argument is interpreted as a command
@@ -59,7 +42,30 @@ def shell_command(*commands, **keywords):
     if not result: return
     elif split: return result.split('\n')
     else: return result
+    
+################################################################################3
+# Processes methods
+
+def get_memory(pid,virtual=False):
+    """This function uses '/proc/pid/status' to get the memory consumption of a process """
+    mem,units = shell_command('cat /proc/%s/status | grep Vm%s'%(pid,'Size' if virtual else 'RSS')).lower().strip().split()[1:3]
+    return int(mem)*(1e3 if 'k' in units else (1e6 if 'm' in units else 1))
         
+def get_process_pid(include,exclude='grep|screen'):
+    include = include.replace(' ','.*')
+    exclude = exclude.replace(' ','.*')
+    lines = [s.strip() for s in shell_command('ps ax | grep -E "%s"'%include+(' | grep -viE "%s"'%exclude if exclude else '')).split('\n')]
+    print '\n'.join(lines)
+    pids = []
+    for l in lines:
+        for p in l.split():
+            if re.match('[0-9]+',p):
+                pids.append(int(p))
+                break
+    if len(pids)>1:
+        raise Exception('Multiple PIDs found: please refine search using exclude argument')
+    return pids[0]
+    
 def KillEmAll(klass):
     processes = shell_command('ps uax').split('\n')
     processes = [s for s in processes if '%s'%(klass) in s]
@@ -67,6 +73,28 @@ def KillEmAll(klass):
         print 'Killing %s' % a
         pid = a.split()[1]
         shell_command('kill -9 %s'%pid)        
+        
+################################################################################3
+# Filesystem methods
+
+def listdir(folder,mask='.*',files=False,folders=False):
+    try:
+        if folders and not files:
+            vals = os.walk(folder).next()[1]
+        elif files and not folders:
+            vals = os.walk(folder).next()[2]
+        else:
+            vals = os.listdir(folder)
+        if mask:
+            return [f for f in vals if re.match(fun.toRegexp(mask),f)]
+        else:
+            return vals
+    except Exception,e:
+        print e
+        raise Exception('FolderDoesNotExist',folder)
+        
+################################################################################3
+# Kde methods        
         
 def desktop_switcher(period,event=None,iterations=2):
     """ It uses wmctrl to switch between all desktops with a period as specified.
@@ -92,7 +120,8 @@ def desktop_switcher(period,event=None,iterations=2):
     thr.start()
     return True
         
-#!/usr/bin/env python2.5
+################################################################################3
+# Networking methods
 
 def ping(ips,threaded = False, timeout = 1):
     ''' By Noah Gift's, PyCon 2008
