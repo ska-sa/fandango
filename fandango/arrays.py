@@ -193,7 +193,7 @@ class CSVArray:
         return (len(self.rows)-self.xoffset, len(self.cols)-self.yoffset)
     
     #@Catched
-    def __init__(self,filename=None,header=None,labels=None,comment=None):
+    def __init__(self,filename=None,header=None,labels=None,comment=None,offset=0):
         """
         @param[in] filename file to load
         @param[in] header row to use as column headers
@@ -204,7 +204,7 @@ class CSVArray:
         self.nrows = 0
         self.ncols = 0
         self.filename = None
-        self.xoffset = 0
+        self.xoffset = offset
         self.yoffset = 0
         self.comment = None
         self.dialect = None
@@ -307,7 +307,7 @@ class CSVArray:
         """def resize(self, x(rows), y(columns)):
         TODO: This method seems quite buggy, a refactoring should be done
         """
-        print 'CSVArray.resize(',x,',',y,'), actual size is (%d,%d)' % (self.nrows,self.ncols)
+        #print 'CSVArray.resize(',x,',',y,'), actual size is (%d,%d)' % (self.nrows,self.ncols)
         if len(self.rows)!=self.nrows: print 'The Size of the Array has been corrupted!'
         if len(self.cols)!=self.ncols: print 'The Size of the Array has been corrupted!'
         
@@ -340,8 +340,8 @@ class CSVArray:
         self.ncols = y
         if len(self.cols)!=self.ncols: print 'The Size of the Array Columns has been corrupted!'
         
-        print 'CSVArray.rows dimension is now ',len(self.rows),'x',max([len(r) for r in self.rows])
-        print 'CSVArray.cols dimension is now ',len(self.cols),'x',max([len(c) for c in self.cols])
+        #print 'CSVArray.rows dimension is now ',len(self.rows),'x',max([len(r) for r in self.rows])
+        #print 'CSVArray.cols dimension is now ',len(self.cols),'x',max([len(c) for c in self.cols])
         return x,y
         
     ###########################################################################
