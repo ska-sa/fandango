@@ -666,7 +666,8 @@ class ReversibleDict(object):#dict):
     def __getitem__(self, key,raw=False):
         """ It scans the dict table in both directions, returning value or a ReversibleDict instance """
         ks = self.keysets(key=key)
-        if not ks.get(key,[]): raise Exception,'KeyNotFound(%s)'%key
+        if not ks.get(key,[]): 
+            raise Exception,'KeyNotFound(%s)'%str(key)
         if self.nextlevel() == self.depth()-1:
             i = ks[key].pop()
             return self._table[i][self.nextlevel(i)] #Returning a first/last element of tuple
