@@ -580,8 +580,10 @@ class ServersDict(CaselessDict,Object):
         The wait parameter forces to wait several seconds until the device answers to an State command.
         wait=0 performs no wait
         '''
-        if servers_list is None: servers_list = self.keys()
-        elif type(servers_list) not in [list,set,tuple]: servers_list = [servers_list]
+        if servers_list is None: 
+            servers_list = sorted(self.keys(),key=(lambda s: s in self and self[s].level or 0))
+        elif type(servers_list) not in [list,set,tuple]: 
+            servers_list = [servers_list]
         done = False
         event = threading.Event()
         new_servers = [s for s in servers_list if s not in self]
@@ -591,6 +593,8 @@ class ServersDict(CaselessDict,Object):
             
         full_servers_list = []
         for s_name in servers_list:
+            if s_name in self and str(self[s_name].ping()) == 'ON':
+                self.log.info('Server %s is already running'%s_name)
             if not host: 
                 try:
                     if s_name in self: self[s_name].init_from_db(self.db)
@@ -639,7 +643,7 @@ class ServersDict(CaselessDict,Object):
         return done
             
     def start_all_servers(self): 
-        return self.start_servers(sorted(self.keys()))
+        return self.start_servers(sorted(self.keys(),key=(lambda s: s in self and self[s].level or 0)))
         
     #def server_StartNForClass(self,c_name,N,wait=3):
         #'''def server_StartNForClass(self,c_name,N,wait=3):Starts N servers of a given Class'''
@@ -657,7 +661,8 @@ class ServersDict(CaselessDict,Object):
         If the argument is a single device it will kill all the devices running in the same server!
         '''
         done = False
-        if servers_list is None: servers_list = self.keys()
+        if servers_list is None: 
+            servers_list = sorted(self.keys(),key=(lambda s: s in self and (-self[s].level) or 0))
         elif type(servers_list) not in [list,set,tuple]:
             servers_list = [servers_list]
         new_servers = [s for s in servers_list if s not in self]
@@ -665,13 +670,21 @@ class ServersDict(CaselessDict,Object):
             self.check_servers_names(new_servers)
             self.load_from_servers_list(new_servers)        
         for server_name in servers_list:
-            server_name = self[server_name].name
-            self.log.info( 'StoppingServer '+server_name)
-            try:
-                self[server_name].get_proxy().command_inout('Kill')
-                done = True
-            except Exception,e:
-                self.log.error('Exception in server_Stop(%s): %s'%(server_name,str(e)))
+            server = self[server_name]
+            if server.ping() is not None:
+                self.log.info( 'StoppingServer '+server.name)
+                try:
+                    server.get_proxy().command_inout('Kill')
+                    done = True
+                except Exception,e:
+                    self.log.error('Exception in server_Stop(%s): %s'%(server.name,str(e)))
+            else:
+                self.log.info( 'KillingServer %s (idle or not running)' % server.name)
+                try:
+                    self.proxies[server.get_starter_name()].HardKillServer(server.name)
+                    done = True
+                except Exception,e:
+                    self.log.warning('Exception in server_Kill(%s): may be not running'%(server.name))
         
         hosts = [self[s].host for s in servers_list if s in self]
         for host in hosts:
@@ -684,7 +697,7 @@ class ServersDict(CaselessDict,Object):
         return done
             
     def stop_all_servers(self): 
-        return self.stop_servers(self.keys())    
+        return self.stop_servers(sorted(self.keys(),key=(lambda s: s in self and (-self[s].level) or 0)))    
             
     def restart_servers(self,servers_list=None,wait=5.):
         '''Performs stop_servers followed by start_servers.'''
@@ -700,7 +713,8 @@ class ServersDict(CaselessDict,Object):
         Kills a list of SERVERs by sending a HardKillServer to the Starter of their hosts.
         '''
         done = False
-        if servers_list is None: servers_list = self.keys()
+        if servers_list is None: 
+            servers_list = self.keys()
         elif type(servers_list) not in [list,set,tuple]:
             servers_list = [servers_list]
         new_servers = [s for s in servers_list if s not in self]
@@ -728,8 +742,8 @@ class ServersDict(CaselessDict,Object):
                     self.log.warning('Unable to contact with Starter in host %s: %s' % (host,e))
         return done        
             
-    def hard_kill(self,name):
-        print 'in hard_kill(%s)'%name
+    def kill_os(self,name):
+        print 'in kill_os(%s)'%name
         if type(name) is not list:
             name = name.split('/')
         import subprocess
