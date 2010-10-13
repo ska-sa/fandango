@@ -1,6 +1,14 @@
 
 from PyQt4 import Qt,QtCore,QtGui
 import Queue,traceback
+from functools import partial
+from functional import isString
+from log import Logger
+
+def modelSetter(obj,model):
+    if hasattr(obj,'setModel') and model:
+        obj.setModel(model)
+    return
 
 class TauEmitterThread(QtCore.QThread):
     """
@@ -45,12 +53,16 @@ class TauEmitterThread(QtCore.QThread):
         </pre>
     """
     def __init__(self, parent=None,queue=None,method=None):
-        """Parent most not be None and must be a TauGraphicsScene!"""
+        """
+        Parent most not be None and must be a TauGraphicsScene!
+        :param method: function to be applied for any argument list stored in the queue, if None the first argument of the list will be used as method
+        """
         #if not isinstance(parent, TauGraphicsScene):
             #raise RuntimeError("Illegal parent for TauGraphicsUpdateThread")
         QtCore.QThread.__init__(self, parent)
         self.log = Logger('TauEmitterThread')
-        self.queue = queue
+        self.log.setLogLevel(self.log.Debug)
+        self.queue = queue or Queue.Queue()
         self.todo = Queue.Queue()
         self.method = method
         self.emitter = QtCore.QObject()
@@ -58,7 +70,7 @@ class TauEmitterThread(QtCore.QThread):
         self.emitter.setParent(QtGui.QApplication.instance())
         self._done = 0
         QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("doSomething"), self._doSomething)
-        QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("somethingDone"), self._next)
+        QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("somethingDone"), self.next)
         
     def getQueue(self):
         if self.queue: return self.queue
@@ -72,38 +84,47 @@ class TauEmitterThread(QtCore.QThread):
     def _doSomething(self,args):
         print '#'*80
         self.log.debug('At TauEmitterThread._doSomething(%s)'%str(args))
-        if self.method: 
+        if not self.method: 
+            method,args = args[0],args[1:]
+        else: 
+            method = self.method
+        if method:
             try:
-                self.method(args)
+                method(*args)
             except:
                 self.log.error('At TauEmitterThread._doSomething(): %s' % traceback.format_exc())
         self.emitter.emit(QtCore.SIGNAL("somethingDone"))
         self._done += 1
         return
         
-    def _next(self):
+    def next(self):
         queue = self.getQueue()
-        self.log.debug('At TauEmitterThread._next(), %d items remaining.' % queue.qsize())
-        if not queue.empty():
+        self.log.debug('At TauEmitterThread.next(), %d items remaining.' % queue.qsize())
+        if queue.qsize() or not queue.empty():
             try:
                 item = queue.get(False) #A blocking get here would hang the GUIs!!!
                 self.todo.put(item)
+                self.log.debug('Item added to todo queue: %s' % str(item))
             except Queue.Empty,e:
+                self.log.warning(traceback.format_exc())
                 pass
+            except: 
+                self.log.warning(traceback.format_exc())
         return
         
     def run(self):
         print '#'*80
-        self.log.debug('At TauEmitterThread.run()')
-        self._next()
+        self.log.info('At TauEmitterThread.run()')
+        self.next()
         while True:
             item = self.todo.get(True)
-            if type(item) in tau.core.utils.types.StringTypes:
+            if isString(item):
                 if item == "exit":
                     break
                 else:
                     continue
+            self.log.debug('Emitting doSomething signal ...')
             self.emitter.emit(QtCore.SIGNAL("doSomething"), item)
             #End of while
-        self.log.info('Out of TauEmitterThread.run()')
+        self.log.info('#'*80+'\nOut of TauEmitterThread.run()'+'\n'+'#'*80)
         #End of Thread 
