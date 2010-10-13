@@ -1,8 +1,15 @@
-7th october 2010 - servers.py
+7th october 2010
 -----------------------------
-
+servers:
 Start/Stop of servers improved, checking running status to ignore/kill processes if needed.
-
+dynamic:
+Added tau event subscription for XAttr
+polling_report moved to its own method
+log:
+bug solved in level aliases
+qt:
+TauEmitter.next is now public
+if self.method is None, methods are taken from queue
 
 PyTango_utils bliss-8.12, 16 Sept 2010
 -------------------------------------
