@@ -595,6 +595,7 @@ class ServersDict(CaselessDict,Object):
         for s_name in servers_list:
             if s_name in self and str(self[s_name].ping()) == 'ON':
                 self.log.info('Server %s is already running'%s_name)
+                continue
             if not host: 
                 try:
                     if s_name in self: self[s_name].init_from_db(self.db)
