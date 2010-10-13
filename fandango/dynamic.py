@@ -119,6 +119,11 @@ if MEM_CHECK:
         HEAPY.setrelheap()    
     except:
         MEM_CHECK=False
+
+GARBAGE_COLLECTION=False
+GARBAGE,NEW_GARBAGE = None,None
+if GARBAGE_COLLECTION:
+    import gc
         
 if 'Device_4Impl' not in dir(PyTango): PyTango.Device_4Impl = PyTango.Device_3Impl
 if 'DeviceClass' not in dir(PyTango): PyTango.DeviceClass = PyTango.PyDeviceClass
@@ -145,6 +150,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self.dyn_states = {}
         self.dyn_values = {}
         self.variables = {}
+        self.DEFAULT_POLLING_PERIOD = 3000.
 
         ##Local variables and methods to be bound for the eval methods
         self._globals=globals().copy()
@@ -192,6 +198,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._last_read = {}
         self._read_times = {}
         self._eval_times = {}
+        self.GARBAGE = []
 
         self.TangoStates = ['ON','OFF','CLOSE','OPEN','INSERT','EXTRACT','MOVING','STANDBY','FAULT','INIT','RUNNING','ALARM','DISABLE','UNKNOWN']
         self.useDynStates = useDynStates
@@ -274,7 +281,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self.db = db = db or (hasattr(self,'db') and getattr(self,'db')) or PyTango.Database()
         my_name = self.get_name()
         
-        new_attr = dict.fromkeys(new_attr,3000) if isinstance(new_attr,list) else new_attr
+        new_attr = dict.fromkeys(new_attr,self.DEFAULT_POLLING_PERIOD) if isinstance(new_attr,list) else new_attr
         props = db.get_device_property(my_name,['DynamicAttributes','polled_attr'])
         npattrs = []
         
@@ -328,6 +335,35 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         else:
             db.put_device_property(my_name,{'polled_attr':npattrs})
         self.info('Out of check_polled_attributes ...')
+        
+    def attribute_polling_report(self):
+        self.info('-'*80)
+        now = time.time()
+        self._cycle_start = now-self._cycle_start
+        self.info('Last complete reading cycle took: %f seconds' % self._cycle_start)
+        for key in self._read_times:
+            self.info('%s read after %s s; needed %f s; eval in %f s; %f of the usage' % (key, self._last_period[key],self._read_times[key],self._eval_times[key],self._read_times[key]/self._total_usage))
+        self.info('%f s empty seconds in total; %f of CPU Usage' % (self._cycle_start-self._total_usage,self._total_usage/self._cycle_start))
+        self.info('%f of time used in expressions evaluation' % (sum(self._eval_times.values())/sum(self._read_times.values())))
+        if False: #GARBAGE_COLLECTION:
+            if not gc.isenabled(): gc.enable()
+            gc.collect()
+            grb = gc.get_objects()
+            self.info('%d objects in garbage collector, %d objects are uncollectable.'%(len(grb),len(gc.garbage)))
+            try:
+                if self.GARBAGE:
+                    NEW_GARBAGE = [o for o in grb if o not in self.GARBAGE]
+                    self.info('New objects added to garbage are: %s' % ([str(o) for o in NEW_GARBAGE]))
+            except:
+                print traceback.format_exc()
+            self.GARBAGE = grb
+        if MEM_CHECK:
+            h = HEAPY.heap()
+            self.info(str(h))
+        self._cycle_start = now
+        self._total_usage = 0
+        self.info('-'*80)
+        
 
         
     #------------------------------------------------------------------------------------------------------
@@ -482,20 +518,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             self._read_times[aname]=now-self._hook_epoch
             self._eval_times[aname]=now-tstart
             self._total_usage += now-self._hook_epoch
-            if aname==self.dyn_values.keys()[-1]: 
-                self.info('-'*80)
-                self._cycle_start = now-self._cycle_start
-                self.info('Last complete reading cycle took: %f seconds' % self._cycle_start)
-                for key in self._read_times:
-                    self.info('%s read after %s s; needed %f s; eval in %f s; %f of the usage' % (key, self._last_period[key],self._read_times[key],self._eval_times[key],self._read_times[key]/self._total_usage))
-                self.info('%f s empty seconds in total; %f of CPU Usage' % (self._cycle_start-self._total_usage,self._total_usage/self._cycle_start))
-                self.info('%f of time used in expressions evaluation' % (sum(self._eval_times.values())/sum(self._read_times.values())))
-                if MEM_CHECK:
-                    h = HEAPY.heap()
-                    self.info(str(h))
-                self._cycle_start = now
-                self._total_usage = 0
-                self.info('-'*80)
+            if (aname=='POLL' if 'POLL' in self.dyn_values else aname==self.dyn_values.keys()[-1]):
+                self.attribute_polling_report()
         except Exception, e:           
             now=time.time()
             self.dyn_values[aname].update(e,now,PyTango.AttrQuality.ATTR_INVALID) #Exceptions always kept!
@@ -638,6 +662,11 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
     def setAttr(self,aname,VALUE):
         """Evaluates the WRITE part of an Attribute, passing a VALUE."""
         self.evalAttr(aname,WRITE=True,VALUE=VALUE)
+        
+    def event_received(self,source,type_,attr_value):
+        def log(prio,s): print '%s %s %s: %s' % (prio.upper(),time.strftime('%Y-%m-%d %H:%M:%S',time.localtime()),self.get_name(),s)
+        log('debug','In DynamicDS.event_received(%s(%s),%s,%s): Not Implemented!'%(type(source).__name__,source,tau.core.TauEventType[type_],type(attr_value).__name__))
+        return
 
     def getXAttr(self,aname,default=None):
         """
@@ -666,6 +695,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                     if full_name not in self._external_attributes:
                         if USE_TAU: 
                             self._external_attributes[full_name] =  tau.Attribute(full_name)
+                            self._external_attributes[full_name].addListener(self.event_received)
+                            self._external_attributes[full_name].changePollingPeriod(self.DEFAULT_POLLING_PERIOD)
                             if len(self._external_attributes) == 1: tau.core.utils.Logger.disableLogOutput()
                         else: self._external_attributes[full_name] = PyTango.AttributeProxy(full_name)
                     attrval = self._external_attributes[full_name].read()
