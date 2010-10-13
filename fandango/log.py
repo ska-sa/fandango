@@ -74,6 +74,8 @@ class Logger(Object):
     
     def __init__(self, name='', parent=None,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s'):
         self.call__init__(Object)
+        self._ForcePrint    = False
+        self.__levelAliases    = {'ERROR':self.Error,'WARNING':self.Warning,'INFO':self.Info,'DEBUG':self.Debug}
         
         if not Logger.root_inited:
             #print 'log format is ',format
@@ -88,9 +90,6 @@ class Logger(Object):
 
         self.log_obj = logging.getLogger(self.full_name)
         self.log_handlers = []
-
-        self._ForcePrint    = False
-        self.__levelAliases    = {'ERROR':self.Error,'WARNING':self.Warning,'INFO':self.Info,'DEBUG':self.Debug}
 
         self.parent = None
         self.children = []
@@ -122,6 +121,8 @@ class Logger(Object):
             if type(level) is str and level.upper() in logging.__dict__.keys():
                 self.debug('log.Logger: Logging  level set to %s'%str(logging.__dict__[level.upper()]))
                 self.log_obj.setLevel(logging.__dict__[level.upper()])
+        elif level in self.__levelAliases.values():
+            self.log_obj.setLevel(level)
         else:
             self.warning('log.Logger: Logging level cannot be set to %s'%str(level))
             pass
