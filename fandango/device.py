@@ -436,12 +436,14 @@ class fakeAttributeValue(object):
     def get_date(self): return self.date
     def get_quality(self): return self.quality
     
-    def set_value(self,value):
+    def set_value(self,value,dim_x=1,dim_y=1):
         self.value = value
-        if fun.isSequence(value):
-            self.dim_x = len(value)
-            if value and fun.isSequence(value[0]):
-                self.dim_y = len(value[0])
+        self.dim_x = dim_x
+        self.dim_y = dim_y
+        #if fun.isSequence(value):
+            #self.dim_x = len(value)
+            #if value and fun.isSequence(value[0]):
+                #self.dim_y = len(value[0])
         self.set_date(time.time())
     def set_date(self,timestamp):
         if not isinstance(timestamp,PyTango.TimeVal): 
