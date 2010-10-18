@@ -1,15 +1,30 @@
-7th october 2010
+PyTango_utils bliss-8.14, 18th october 2010
+-------------------------------------------
+device:
+ * Dev4Tango modified to be able to manage internal polling
+ * Fake attribute/event objects improved
+ * Added event-like access to internal device objects within a server and its attributes and commands
+ * DevChild class commented from the module as it will be replaced by Dev4Tango
+dicts/objects:
+ * self_locked decorator moved from dicts to objects module
+dynamic:
+ * self_locked decorator added to always_executed_hoot, read_dyn_attr and write_dyn_attr methods
+servers:
+ * bug solved in get_device_list method
+
+
+PyTango_utils bliss-8.13, 13th october 2010
 -----------------------------
 servers:
-Start/Stop of servers improved, checking running status to ignore/kill processes if needed.
+ * Start/Stop of servers improved, checking running status to ignore/kill processes if needed.
 dynamic:
-Added tau event subscription for XAttr
-polling_report moved to its own method
+* Added tau event subscription for XAttr
+* polling_report moved to its own method
 log:
-bug solved in level aliases
+* bug solved in level aliases
 qt:
-TauEmitter.next is now public
-if self.method is None, methods are taken from queue
+* TauEmitter.next is now public
+* if self.method is None, methods are taken from queue
 
 PyTango_utils bliss-8.12, 16 Sept 2010
 -------------------------------------
