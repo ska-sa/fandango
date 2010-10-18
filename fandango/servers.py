@@ -71,7 +71,7 @@ class TServer(Object):
         self.update_level(host,0)
         self.controlled = False
         self.level = 0      
-        self.classes = collections.defaultdict(list)#{}#{class:set(devices)}
+        self.classes = {}#{}#{class:set(devices)}
         self.state=None #PyTango.DevState.UNKNOWN
         self.log = Logger('TServer-%s'%name)
         self.log.setLogLevel('INFO')
@@ -119,6 +119,7 @@ class TServer(Object):
         self.update_level(ssi.host,ssi.level)
         devs = db.get_device_class_list(self.name)
         #print 'loading from %s server:%s'%(s,str(devs))
+        self.classes = collections.defaultdict(list)
         for i in range(0,len(devs),2):
             klass=devs[i+1]
             self.classes[klass].append(devs[i].lower())
