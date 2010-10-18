@@ -97,6 +97,7 @@ import inspect
 from PyTango import AttrQuality
 from PyTango import DevState
 from excepts import *
+from objects import self_locked
 #from .excepts import Catched,ExceptionManager
 #from  . import log
 
@@ -220,6 +221,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             self.myClass = self.get_device_class()
         return
 
+    @self_locked
     def always_executed_hook(self):
         #print "In DynamicDS::always_executed_hook()"
         try:
@@ -481,6 +483,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         return True
 
     #@Catched #Catched decorator is not compatible with PyTango_Throw_Exception
+    @self_locked
     def read_dyn_attr(self,attr,fire_event=True):
         aname = attr.get_name()
         tstart=time.time()
@@ -499,8 +502,11 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
               if type(result) in (list,set,tuple):
                 attr_DynAttr_read = []
                 for r in result: attr_DynAttr_read.append(r)
-                PyTango.set_attribute_value_date_quality(attr_DynAttr_read,date,quality,len(attr_DynAttr_read),0)
-              else: PyTango.set_attribute_value_date_quality(attr,result,date,quality)
+                try: PyTango.set_attribute_value_date_quality(attr_DynAttr_read,date,quality,len(attr_DynAttr_read),0)
+                except: attr.set_value(attr_DynAttr_read)
+              else: 
+                try: PyTango.set_attribute_value_date_quality(attr,result,date,quality)
+                except: attr.set_value(result)
 
             ##if fire_event: self.fireAttrEvent(aname,result)
             #Value must be updated after fire Event
@@ -535,10 +541,12 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             print traceback.format_exc()
             raise Exception('DynamicDS_read_%s_Exception: %s' % (aname,last_exc))
             #PyTango.Except.throw_exception('DynamicDS_read_dyn_attr_Exception',str(e),last_exc)
-
+    
+    ##This hook has been used to force self to be passed always as argument and avoid dynattr missmatching
     read_dyn_attr=staticmethod(read_dyn_attr)
 
     @Catched
+    @self_locked
     def write_dyn_attr(self,attr,fire_event=True):
         aname = attr.get_name()
         self.debug("DynamicDS("+self.get_name()+")::write_dyn_atr("+aname+"), entering at "+time.ctime()+"...")
