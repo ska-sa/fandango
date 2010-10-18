@@ -50,31 +50,7 @@ srubio@cells.es,
 """
 
 import collections
-
-def self_locked(func,reentrant=True):
-    ''' Decorator to make thread-safe class members
-    @deprecated
-    @note see in tau.core.utils.containers
-    Decorator to create thread-safe objects.
-    reentrant: CRITICAL:
-        With Lock() this decorator should not be used to decorate nested functions; it will cause Deadlock!
-        With RLock this problem is avoided ... but you should rely more on python threading.
-    '''
-    import threading
-    def lock_fun(self,*args,**kwargs):
-        if not hasattr(self,'lock'):
-            setattr(self,'lock',threading.RLock() if reentrant else threading.Lock())
-        if not hasattr(self,'trace'):
-            setattr(self,'trace',False)
-        self.lock.acquire()
-        try: 
-            #if self.trace: print "locked: %s"%self.lock
-            result = func(self,*args,**kwargs)
-        finally: 
-            self.lock.release()
-            #if self.trace: print "released: %s"%self.lock
-        return result       
-    return lock_fun
+from objects import self_locked
             
 try:
     import numpy
