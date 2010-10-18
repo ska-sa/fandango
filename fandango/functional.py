@@ -171,7 +171,7 @@ def inCl(exp,seq):
     
 def matchCl(exp,seq):
     """ Returns a caseless match between expression and given string """
-    return re.match(exp.lower(),seq.lower())
+    return re.match(toRegexp(exp).lower(),seq.lower())
 clmatch = matchCl #For backward compatibility
 
 def searchCl(exp,seq):
