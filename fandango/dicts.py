@@ -97,15 +97,17 @@ class ThreadDict(dict):
     
     @deprecated now in tau.core.utils.containers
     '''
-    
     def __init__(self,other=None,read_method=None,write_method=None,timewait=0.1,threaded=True,trace=False):
         self.read_method = read_method
         self.write_method = write_method
         self.timewait = timewait
         self.threaded = threaded
         self._threadkeys = []
+        self._periods = {}
+        self._updates = {}
         self.trace = trace
         self.last_update = 0
+        self._last_read = ''
         self.last_cycle_start = 0
         self.parent = type(self).mro()[1] #equals to self.__class__.__base__ or type(self).__bases__[0]
     
@@ -146,25 +148,32 @@ class ThreadDict(dict):
         
     def run(self):
         self.tracer('In ThreadDict.run()')
+        import time        
         while not self.event.isSet():
             keys = self.threadkeys()
-            #if self.trace: print 'ThreadDict keys are %s'%keys
+            if self._last_read and self._last_read!=keys[-1]: #Thread stopped before finishing the cycle!
+                keys = keys[keys.index(self._last_read)+1:]
             for k in keys:
                 if self.trace: self.tracer('ThreadDict::run(): updating %s'%str(k))
                 try:
-                    #@todo It must be checked wich method for reading is better for thread_safe
-                    if True:
-                        self.__getitem__(k,hw=True)
-                    else: #try this alternative in case of deadlock (it could need extra locks inside read_method)
-                        if self.read_method:
-                            value = self.read_method(k)
-                            self.__setitem__(k,value,hw=False)
+                    if (time.time()-self._updates.get(k,0))>self._periods.get(k,0):
+                        #if period=0 or if not updated the condition applies
+                        
+                        #@todo It must be checked wich method for reading is better for thread_safe
+                        if True:
+                            self.__getitem__(k,hw=True)
+                        else: #try this alternative in case of deadlock (it could need extra locks inside read_method)
+                            if self.read_method:
+                                value = self.read_method(k)
+                                self.__setitem__(k,value,hw=False)
+                        self._updates[k] = time.time()
                 except Exception,e:
                     if self.trace:
                         print '!'*80
                         print '%s ...'%str(traceback.format_exc())[:100]
                     raise e
                 finally:
+                    self._last_read = k
                     if self.event.isSet(): break
                     else: self.event.wait(self.timewait)
                 if self.event.isSet(): break
@@ -188,10 +197,12 @@ class ThreadDict(dict):
     def set_timewait(self,value): self.timewait=value    
     
     @self_locked
-    def append(self,key,value=None): 
+    def append(self,key,value=None,period=0): #period=0 means that attribute will be updated always
         if not dict.has_key(self,key): self.parent.__setitem__(self,key,value)
-        if key not in self._threadkeys: self._threadkeys.append(key)
-        if self.trace: self.tracer('ThreadDict.append(%s,%s)'%(key,value))
+        if key not in self._threadkeys: 
+            self._threadkeys.append(key)
+            self._periods[key] = period
+        if self.trace: self.tracer('ThreadDict.append(%s,%s,%s)'%(key,value,period))
     
     @self_locked
     def threadkeys(self):
