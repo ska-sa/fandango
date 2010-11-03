@@ -329,9 +329,10 @@ def check_device(dev,attribute=None,command=None,full=False):
     except:
         return None            
 
-def check_attribute(attr,readable=False):
+def check_attribute(attr,readable=False,timeout=0):
     """ checks if attribute is available.
     :param readable: Whether if it's mandatory that the attribute returns a value or if it must simply exist.
+    :param timeout: Checks if the attribute value have been effectively updated (check zombie processes).
     """
     try:
         #PyTango.AttributeProxy(attr).read()
@@ -339,7 +340,12 @@ def check_attribute(attr,readable=False):
         assert att in [str(s).lower() for s in PyTango.DeviceProxy(dev).get_attribute_list()]
         try: 
             attvalue = PyTango.AttributeProxy(attr).read()
-            return None if readable and attvalue.quality == PyTango.AttrQuality.ATTR_INVALID else attvalue
+            if readable and attvalue.quality == PyTango.AttrQuality.ATTR_INVALID:
+                return None
+            elif timeout and attvalue.time.totime()<(time.time()-timeout):
+                return None
+            else:
+                return attvalue
         except Exception,e: 
             return None if readable else e
     except:
@@ -884,7 +890,8 @@ class TangoEval(object):
 ##############################################################################################################
 ## DevChild ... DEPRECATED and replaced by Dev4Tango + TAU
 
-#class DevChild(Dev4Tango):
+class DevChild(Dev4Tango):
+    pass
     #"""
     #Inherit from this class, it provides EventManagement, Dev4Tango, log.Logger, objects.Object and more ...
     #To take profit of event management, the Child Class should redeclare its own PushEvent method!!!
