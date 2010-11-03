@@ -59,7 +59,8 @@ except: print 'Unable to import db module'
 
 try:
     from device import Dev4Tango,TangoEval,TimedQueue,DevChild
-except: print 'Unable to import device module'
+except: 
+    print 'Unable to import device module'
     
 try:
     from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration,SortedDict
