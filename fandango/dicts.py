@@ -80,7 +80,7 @@ class ThreadDict(dict):
     
     threadkeys(): 
         returns the list of keys that are being automatically updated in a background thread
-    append(key): 
+    append(key,value=None,period=3000): 
         adds a new key to the dictionary and to the list of keys to be updated
     __setitem__(key,value):tdict[key]=value 
         will also add a new key to the dictionary, but this key value will not be automatically updated.
