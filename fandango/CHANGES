@@ -1,3 +1,9 @@
+PyTango_utils bliss-8.15, 3rd november 2010
+-------------------------------------------
+ * timeout added to check_attribute
+ * DevChild kept as Dev4Tango alias
+ * poll period added as ThreadDict.append
+
 PyTango_utils bliss-8.14, 18th october 2010
 -------------------------------------------
 device:
