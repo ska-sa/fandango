@@ -202,6 +202,11 @@ def isRegexp(seq):
     
 def isNumber(seq):
     return operator.isNumberType(seq)
+
+def isGenerator(seq):
+    from types import GeneratorType
+    # A generator check must be added to the rest of methods in this module!
+    return isinstance(seq,GeneratorType)
     
 def isSequence(seq,INCLUDE_GENERATORS = True):
     """ It excludes Strings, dictionaries but includes generators"""
