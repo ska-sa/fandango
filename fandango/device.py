@@ -63,8 +63,10 @@ if 'Device_4Impl' not in dir(PyTango):
 #TangoDatabase singletone
 try:
     TangoDatabase = PyTango.Database()
+    TangoDevice = PyTango.DeviceProxy(TangoDatabase.dev_name())
 except:
     TangoDatabase = None
+    TangoDevice = None
     
 ####################################################################################################################
 ##@name Methods for searching the database with regular expressions
@@ -270,14 +272,24 @@ def reduce_distinct(group1,group2):
 ########################################################################################
 ## Methods for checking device/attribute availability
             
+def get_db_device():
+    return TangoDevice
+
 def get_device_info(dev):
     """
     This method provides an alternative to DeviceProxy.info() for those devices that are not running
     """
-    vals = PyTango.DeviceProxy('sys/database/2').DbGetDeviceInfo(dev)
-    di = Struct((k,v) for k,v in zip(('name','ior','level','server','host','started','stopped'),vals[1]))
+    #vals = PyTango.DeviceProxy('sys/database/2').DbGetDeviceInfo(dev)
+    vals = TangoDevice.DbGetDeviceInfo(dev)
+    di = Struct([(k,v) for k,v in zip(('name','ior','level','server','host','started','stopped'),vals[1])])
     di.exported,di.PID = vals[0]
     return di
+
+def get_device_host(dev):
+    """
+    Asks the Database device server about the host of this device 
+    """
+    return get_device_info(dev).host
    
 def get_polled_attributes(dev):
     if isinstance(dev,PyTango.DeviceProxy): dp = dev
