@@ -1,3 +1,9 @@
+PyTango_utils 9th November 2010
+-------------------------------------------
+device: Added methods to access device info/host
+dynamic: Added property to disable dependencies check between attributes.
+functional: added isGenerator method
+
 PyTango_utils bliss-8.15, 3rd november 2010
 -------------------------------------------
  * timeout added to check_attribute
