@@ -581,7 +581,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         try:
             __locals= USE_LOCALS and {} or self._locals #{}#locals().copy() #Low priority: local variables; this could be replaced by direct self._locals
             #Checking attribute dependencies
-            if aname in self.dyn_values:
+            if self.CheckDependencies and aname in self.dyn_values:
                 if not self.dyn_values[aname].dependencies:
                     for k,v in self.dyn_values.items():
                         if k in formula and k.lower().strip()!=aname.lower().strip():
@@ -592,6 +592,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                 for k in self.dyn_values[aname].dependencies:
                     v = self.dyn_values[k]
                     if k.lower().strip()!=aname.lower().strip() and isinstance(v.value,Exception): 
+                        self.warning('evalAttr(%s): An exception is rethrowed from attribute %s'%(aname,k))
                         raise v.value #Exceptions are passed to dependent attributes
                     else: __locals[k]=v.value #.value 
                     
@@ -1050,7 +1051,11 @@ class DynamicDSClass(PyTango.DeviceClass):
         'KeepAttributes':
             [PyTango.DevVarStringArray,
             "This property can be used to store the values of only needed attributes; values are 'yes', 'no' or a list of attribute names",
-            ['yes'] ],              
+            ['yes'] ],     
+        'CheckDependencies':
+            [PyTango.DevBoolean,
+            "This property manages if dependencies between attributes are used to check readability.",
+            [True] ],
         }
 
     #    Command definitions
