@@ -158,20 +158,14 @@ class ThreadDict(dict):
                 try:
                     if (time.time()-self._updates.get(k,0))>self._periods.get(k,0):
                         #if period=0 or if not updated the condition applies
-                        
-                        #@todo It must be checked wich method for reading is better for thread_safe
-                        if True:
-                            self.__getitem__(k,hw=True)
-                        else: #try this alternative in case of deadlock (it could need extra locks inside read_method)
-                            if self.read_method:
-                                value = self.read_method(k)
-                                self.__setitem__(k,value,hw=False)
+                        self.__getitem__(k,hw=True)
                         self._updates[k] = time.time()
                 except Exception,e:
                     if self.trace:
-                        print '!'*80
-                        print '%s ...'%str(traceback.format_exc())[:100]
-                    raise e
+                        import traceback
+                        print '!!! ThreadDict Exception !!!'+'\n'+'%s ...'%str(traceback.format_exc())[:100] #+': %s'%str(e)
+                    #raise e
+                    self.__setitem__(k,e,hw=False)
                 finally:
                     self._last_read = k
                     if self.event.isSet(): break
@@ -212,7 +206,8 @@ class ThreadDict(dict):
     def __getitem__(self,key,hw=False):
         ''' This method launches a read_method execution if there's no thread on charge of doing that or if the hw flag is set to True. '''
         import time
-        if (hw or not self.threaded) and self.read_method: 
+        if self.trace: print 'In ThreadDict.__getitem__(%s,%s)'%(key,hw)
+        if (hw or not self.threaded or (self.threaded and key not in self._threadkeys)) and self.read_method: 
             dict.__setitem__(self,key,self.read_method(key))
             self.last_update = time.time()
         return dict.__getitem__(self,key)    
@@ -221,6 +216,7 @@ class ThreadDict(dict):
     def __setitem__(self,key,value,hw=True):
         ''' This method launches a write_method execution if the hw flag is not explicitly set to False. '''
         import time
+        if self.trace: print 'In ThreadDict.__setitem__(%s,...,%s)'%(key,hw)
         if hw and self.write_method: 
             #It implies that a key will not be added here to read thread!
             dict.__setitem__(self,key,self.write_method(*[key,value]))
