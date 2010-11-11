@@ -207,7 +207,7 @@ class ThreadDict(dict):
         ''' This method launches a read_method execution if there's no thread on charge of doing that or if the hw flag is set to True. '''
         import time
         if self.trace: print 'In ThreadDict.__getitem__(%s,%s)'%(key,hw)
-        if (hw or not self.threaded or (self.threaded and key not in self._threadkeys)) and self.read_method: 
+        if (hw or not self.threaded) and self.read_method: # or (self.threaded and key not in self._threadkeys) #HW ACCESS MUST NOT BE DONE WITHOUT ASKING EXPLICITLY! (Use __setitem__(k,None) instead)
             dict.__setitem__(self,key,self.read_method(key))
             self.last_update = time.time()
         return dict.__getitem__(self,key)    
