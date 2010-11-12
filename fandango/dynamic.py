@@ -145,6 +145,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         #Tango Properties
         self.DynamicAttributes = []
         self.DynamicStates = []
+        self.CheckDependencies = True
         #Internals
         self.dyn_attrs = {}
         self.dyn_types = {}
@@ -251,13 +252,15 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         It forces Device properties reading using the Database device.
         It is used by self.updateDynamicAttributes() and required in PyTango<3.0.4
         """
+        ## THIS FUNCTION SEEMS NOT USED ANYMORE !?!?!?!
+        
         if not db: db = PyTango.Database()
         
         props = db.get_class_property(self.get_name(),['DynamicSpectrumSize'])
         for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
         self.DynamicSpectrumSize=props['DynamicSpectrumSize']        
         
-        props = db.get_device_property(self.get_name(),['DynamicAttributes','DynamicStates','DynamicImports','DynamicQualities','KeepAttributes'])
+        props = db.get_device_property(self.get_name(),['DynamicAttributes','DynamicStates','DynamicImports','DynamicQualities','KeepAttributes','CheckDependencies'])
         for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
         self.DynamicAttributes=props['DynamicAttributes']
         self.DynamicStates=props['DynamicStates']
