@@ -162,6 +162,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._locals['ATTR'] = lambda _name: self.getAttr(_name)
         self._locals['XAttr'] = lambda _name,default=None: self.getXAttr(_name,default=default)
         self._locals['XATTR'] = lambda _name,default=None: self.getXAttr(_name,default=default)
+        self._locals['WATTR'] = lambda _name,value: self.getXAttr(_name,wvalue=value,write=True)
         self._locals['COMM'] = lambda _name,_argin=None: self.getXCommand(_name,_argin)
         self._locals['ForceAttr'] = lambda a,v=None: self.ForceAttr(a,v)
         self._locals['VAR'] = lambda a,v=None: self.ForceVar(a,v)
