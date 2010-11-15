@@ -680,7 +680,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         log('debug','In DynamicDS.event_received(%s(%s),%s,%s): Not Implemented!'%(type(source).__name__,source,tau.core.TauEventType[type_],type(attr_value).__name__))
         return
 
-    def getXAttr(self,aname,default=None):
+    def getXAttr(self,aname,default=None,write=False,wvalue=None):
         """
         Performs an external Attribute reading, using a DeviceProxy to read own attributes.
         Argument could be: [attr_name] or [device_name](=State) or [device_name/attr_name]
@@ -693,13 +693,19 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         try:
             if not device:
                 self.info('getXAttr accessing to device itself ... using getAttr instead')
-                result = self.getAttr(aname)
+                if write: 
+                    self.setAttr(aname,wvalue)
+                    result = wvalue
+                else: result = self.getAttr(aname)
             else:
                 devs_in_server = self.myClass.get_devs_in_server()
                 if device in devs_in_server:
                     self.debug('getXAttr accessing a device in the same server ... using getAttr')
                     if aname.lower()=='state': result = devs_in_server[device].get_state()
                     elif aname.lower()=='status': result = devs_in_server[device].get_status() 
+                    elif write: 
+                        devs_in_server[device].setAttr(aname,wvalue) 
+                        result = wvalue
                     else: result = devs_in_server[device].getAttr(aname)
                 else:
                     full_name = (device or self.get_name())+'/'+aname
@@ -711,7 +717,12 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                             self._external_attributes[full_name].changePollingPeriod(self.DEFAULT_POLLING_PERIOD)
                             if len(self._external_attributes) == 1: tau.core.utils.Logger.disableLogOutput()
                         else: self._external_attributes[full_name] = PyTango.AttributeProxy(full_name)
-                    attrval = self._external_attributes[full_name].read()
+                    if write: 
+                        self._external_attributes[full_name].write(wvalue)
+                        result = wvalue
+                    else:
+                        attrval = self._external_attributes[full_name].read()
+                        result = attrval.value
                     """ #TODO: One day the time/quality of the read attributes should be passed to the client
                     if self.lastAttributeValue is None: self.lastAttributeValue = PyTango._PyTango.AttributeValue()
                     if self.lastAttributeValue.time > attrval.time:
@@ -719,7 +730,6 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                     if self.lastAttributeValue.quality < attrval.quality:
                         self.lastAttributeValue.quality = attrval.quality
                     """
-                    result = attrval.value
                     self.debug('%s.read() = %s ...'%(full_name,str(result)[:40])) 
         except:
             msg = 'Unable to read attribute %s from device %s: \n%s' % (str(aname),str(device),traceback.format_exc())
