@@ -164,6 +164,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._locals['XATTR'] = lambda _name,default=None: self.getXAttr(_name,default=default)
         self._locals['WATTR'] = lambda _name,value: self.getXAttr(_name,wvalue=value,write=True)
         self._locals['COMM'] = lambda _name,_argin=None: self.getXCommand(_name,_argin)
+        self._locals['XDEV'] = lambda _name: self.getXDevice(_name)
         self._locals['ForceAttr'] = lambda a,v=None: self.ForceAttr(a,v)
         self._locals['VAR'] = lambda a,v=None: self.ForceVar(a,v)
         #self._locals['RWVAR'] = (lambda read_exp=(lambda arg=NAME:self.ForceVar(arg)),
@@ -253,7 +254,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         It forces Device properties reading using the Database device.
         It is used by self.updateDynamicAttributes() and required in PyTango<3.0.4
         """
-        ## THIS FUNCTION SEEMS NOT USED ANYMORE !?!?!?!
+        ## THIS FUNCTION IS USED FROM updateDynamicAttributes
         
         if not db: db = PyTango.Database()
         
@@ -268,6 +269,10 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self.DynamicImports=props['DynamicImports']
         self.DynamicQualities=props['DynamicQualities']
         self.KeepAttributes=props['KeepAttributes']
+        try: self.CheckDependencies=props['CheckDependencies'][0]
+        except: 
+            self.error(traceback.format_exc())
+            self.CheckDependencies=True
         
     def get_device_property(self,property,update=False):
         if update or not hasattr(self,property):
@@ -465,7 +470,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                 #TODO: Some day self.dyn_values should substitute both dyn_attrs and dyn_types
                 self.dyn_values[aname].formula=formula
                 try: self.dyn_values[aname].compiled=compile(formula.strip(),'<string>','eval')
-                except: pass
+                except: self.error(traceback.format_exc())
                 self.dyn_values[aname].type=self.dyn_types[aname]
                 self.dyn_values[aname].type=self.dyn_attrs[aname]
 
@@ -680,6 +685,15 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         def log(prio,s): print '%s %s %s: %s' % (prio.upper(),time.strftime('%Y-%m-%d %H:%M:%S',time.localtime()),self.get_name(),s)
         log('debug','In DynamicDS.event_received(%s(%s),%s,%s): Not Implemented!'%(type(source).__name__,source,tau.core.TauEventType[type_],type(attr_value).__name__))
         return
+        
+    def getXDevice(self,dname):
+        """
+        This method returns a DeviceProxy to the given attribute.
+        """
+        if USE_TAU:
+            return tau.Device(dname)
+        else:
+            return PyTango.DeviceProxy(dname)
 
     def getXAttr(self,aname,default=None,write=False,wvalue=None):
         """
