@@ -32,7 +32,7 @@ class TauEmitterThread(QtCore.QThread):
             obj,model = args[0],args[1]
             obj.setModel(model)
         
-        class TauGrid(QtGui.QFrame, TauBaseWidget):
+        klass TauGrid(QtGui.QFrame, TauBaseWidget):
             ...
             def __init__(self, parent = None, designMode = False):
                 ...
