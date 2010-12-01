@@ -133,7 +133,7 @@ def matchAny(exprs,seq):
     """ Returns seq if any of the expressions in exp is matched, if not it returns None """
     exprs = toSequence(exprs)
     for exp in exprs:
-        if matchCl(exp,seq): return seq
+        if matchCl(toRegexp(exp),seq): return seq
     return None
     
 def matchMap(mapping,key,regexp=True):
@@ -179,10 +179,11 @@ def searchCl(exp,seq):
     return re.search(exp.lower(),seq.lower())
 clsearch = searchCl #For backward compatibility
 
-def toRegexp(exp):
+def toRegexp(exp,terminate=False):
     """ Replaces * by .* and ? by . in the given expression. """
     exp = exp.replace('*','.*') if '*' in exp and '.*' not in exp else exp
-    exp = exp.replace('?','.') if '?' in exp and not any(s in exp for s in (')?',']?','}?')) else exp
+    #exp = exp.replace('?','.') if '?' in exp and not any(s in exp for s in (')?',']?','}?')) else exp
+    if terminate and not exp.strip().endswith('$'): exp += '$'
     return exp
 
 ########################################################################
@@ -287,7 +288,7 @@ def time2date(epoch=None):
     if epoch is None: epoch = now()
     return datetime.datetime.fromtimestamp(date)
 
-def time2str(epoch=None,cad='%Y-%m-%d %H:%M'):
+def time2str(epoch=None,cad='%Y-%m-%d %H:%M:%S'):
     if epoch is None: epoch = now() 
     return time.strftime(cad,time2tuple(epoch))
 epoch2str = time2str
