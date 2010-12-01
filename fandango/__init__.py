@@ -73,7 +73,7 @@ except:
     print traceback.format_exc()
 
 try:
-    from objects import Object,Singleton,SingletonMap,Struct
+    from objects import Object,Singleton,SingletonMap,Struct,Pool
 except: print 'Unable to import objects module'
 
 try:
