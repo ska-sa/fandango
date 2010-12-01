@@ -311,6 +311,17 @@ def getEventItems():
     GlobalCallback.lock.release()
     return result
 
+def getSubscribedItems(receiver):
+    '''It returns a list with all devices managed by callbacks to which this receiver is effectively subscribed'''
+    GlobalCallback.lock.acquire()
+    result = []
+    for ev in EventsList.values():
+        if receiver in ev.receivers:
+            result.append (ev.dev_name)
+    GlobalCallback.lock.release()
+    return result
+
+
 def addTAttr(tattr):
     try:
         GlobalCallback.lock.acquire()        
@@ -332,5 +343,45 @@ def addReceiver(attribute,receiver):
     finally: GlobalCallback.lock.release()
     return
 
-
+def subscribeDeviceAttributes(self,dev_name,attrs):
+    """ This is how attributes were registered in the old PyStateComposer """
+    dev = PyTango.DeviceProxy(dev_name)
+    dev.ping()                                
+    # Initializing lists
+    if dev_name not in callbacks.StatesList: callbacks.StatesList[dev_name] = PyTango.DevState.UNKNOWN
+    if dev_name not in callbacks.AttributesList: callbacks.AttributesList[dev_name] = None
+    
+    for att in attrs:
+        att_name = (dev_name+'/'+att).lower()
+        if att not in dev.get_attribute_list():
+            continue
+        if not dev.is_attribute_polled(att) and self.ForcePolling:
+            self.info('::AddDevice(): forcing %s polling to %s' % (att,argin))
+            period = dev.get_attribute_poll_period(att) or 3000
+            dev.poll_attribute(att,period)
+            self.debug("%s.poll_attribute(%s,%s)" % (argin,att,period))
+        #cb = self 
+        cb = GlobalCallback
+        
+        if not att_name in callbacks.EventsList.keys():
+            callbacks.EventsList[att_name] = self.TAttr(att_name)
+            callbacks.EventsList[att_name].receivers.append(self.get_name())
+            self.info('AddDevice: subscribing event for %s'  % att_name)
+            event_id = dev.subscribe_event(att,PyTango.EventType.CHANGE,cb,[],True)
+            # Global List
+            callbacks.EventsList[att_name].dp = dev
+            callbacks.EventsList[att_name].event_id = event_id
+            callbacks.EventsList[att_name].dev_name = dev_name
+            print "In ", self.get_name(), "::AddDevice()", ": Listing Device/Attributes in EventsList:"
+            for a,t in callbacks.EventsList.items(): print "\tAttribute: ",a,"\tDevice: ",t.dev_name,"\n"
+        else:
+            self.warning("::AddDevice(%s): This attribute is already in the list, adding composer to receivers list." % att_name)
+            if not dev_name in callbacks.EventsList[att_name].receivers:
+                callbacks.EventsList[att_name].receivers.append(self.get_name())
+            if callbacks.EventsList[att_name].attr_value is not None:
+                if att is 'State':
+                    callbacks.StatesList[dev_name]=EventsList[att_name].attr_value.value
+                else: 
+                    callbacks.AttributesList[dev_name]=EventsList[att_name].attr_value.value    
+    return
 
