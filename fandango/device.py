@@ -60,13 +60,28 @@ import PyTango
 from PyTango import AttrQuality
 if 'Device_4Impl' not in dir(PyTango):
     PyTango.Device_4Impl = PyTango.Device_3Impl
-#TangoDatabase singletone
+    
 try:
-    TangoDatabase = PyTango.Database()
-    TangoDevice = PyTango.DeviceProxy(TangoDatabase.dev_name())
+    import tau
+    USE_TAU=True
+except:
+    USE_TAU=False
+
+def get_device(dev): 
+    #return USE_TAU and tau.core.TauManager().getFactory()().getDevice(dev) or PyTango.DeviceProxy(dev)
+    return USE_TAU and tau.Device(dev) or PyTango.DeviceProxy(dev)
+
+##TangoDatabase singletone, This object is not thread safe, use TAU database if possible
+try:
+    #TangoDatabase = USE_TAU and tau.core.TauManager().getFactory()().getDatabase() or PyTango.Database()
+    TangoDatabase = USE_TAU and tau.Database() or PyTango.Database()
+    TangoDevice = get_device(TangoDatabase.dev_name())
 except:
     TangoDatabase = None
     TangoDevice = None
+    
+def get_database(): return TangoDatabase
+def get_database_device(): return TangoDevice
     
 ####################################################################################################################
 ##@name Methods for searching the database with regular expressions
@@ -96,12 +111,13 @@ def re_match_low(regexp,target): return re.match(regexp.lower(),target.lower())
 def get_all_devices(expressions,limit=1000):
     ''' Returns the list of registered devices (including unexported) that match any of the given wildcars (Regexp not admitted!) '''
     results = []
-    db = PyTango.Database()
+    db = get_database()
     expressions = fun.toList(expressions)
     for target in expressions:
         if not target.count('/')>=2:
             print 'servers.get_all_devices(%s): device names must have 2 slash characters'%target
-            continue
+            if len(expressions)>1: continue
+            else: raise 'ThisIsNotAValidDeviceName'
         td,tf,tm = target.split('/')[:3]
         domains = db.get_device_domain(target)
         for d in domains:
@@ -111,52 +127,59 @@ def get_all_devices(expressions,limit=1000):
                 for m in members:
                     results.append('/'.join((d,f,m)))
     return results
-get_matching_devices = get_all_devices
                 
-def get_matching_attributes(dev,exprs):
-    """ Arguments are device_name,list_of_expressions. """
-    result = []
-    for expr in exprs:
-        expr = expr.replace('*','.*') if '*' in expr and '.*' not in expr else expr 
-        result.extend([a for a in PyTango.DeviceProxy(dev).get_attribute_list() if re.match(expr.lower(),a.lower())])
+def get_matching_devices(expressions,limit=1000):
+    all_devs = list(get_database().get_device_name('*','*'))
+    expressions = map(fun.toRegexp,fun.toList(expressions))
+    return filter(lambda d: any(fun.matchCl(e,d) for e in expressions),all_devs)
+
+def get_matching_attributes(dev,expressions):
+    """ Given a device name it returns the attributes matching any of the given expressions """
+    expressions = map(fun.toRegexp,fun.toList(expressions))
+    al = get_device(dev).get_attribute_list()
+    result = [a for a in al for expr in expressions if fun.matchCl(expr,a)]
     return result
 
-def get_matching_device_attributes(express):
-    """ regexp only allowed in attribute names: Expressions must be in the form [domain_wild/family_wild/member_wild/attribute_regexp] """
+def get_matching_device_attributes(expressions,limit=1000):
+    """ 
+    Returns all matching device/attribute pairs. 
+    regexp only allowed in attribute names
+    :param express: like [domain_wild/family_wild/member_wild/attribute_regexp] 
+    """
     attrs = []
-    for e in express:
+    expressions = map(fun.partial(fun.toRegexp,terminate=True),fun.toList(expressions))
+    for e in expressions:
         if e.count('/')==2: 
             dev,attr = e,'state'
         elif e.count('/')==3: 
             dev,attr = e.rsplit('/',1)
         else: 
             raise Exception('Expression must match domain/family/member/attribute shape!: %s'%e)
-        for d in get_all_devices([dev]):
-            try: attrs.extend([d+'/'+a for a in get_matching_attributes(d,[attr])])
+        for d in get_matching_devices(dev):
+            try: 
+                ats = get_matching_attributes(d,[attr])
+                attrs.extend([d+'/'+a for a in ats])
+                if len(attrs)>limit: break
             except: print 'Unable to get attributes for %s'%d
     return list(set(attrs))
-
+    
 def get_all_models(expressions,limit=1000):
     ''' It returns all the available Tango attributes matching any of a list of regular expressions.
     All devices matching expressions must be obtained.
     For each device only the good attributes are read.
     '''
-    print 'In servers.get_all_models(%s:"%s") ...' % (type(expressions),expressions)
-    
     if isinstance(expressions,str): #evaluating expressions ....
         if any(re.match(s,expressions) for s in ('\{.*\}','\(.*\)','\[.*\]')): expressions = list(eval(expressions))
         else: expressions = expressions.split(',')
     elif isinstance(expressions,(USE_TAU and QtCore.QStringList or list,list,tuple,dict)):
-        print 'expressions converted from list ...'
         expressions = list(str(e) for e in expressions)
         
     print 'In get_all_models(%s:"%s") ...' % (type(expressions),expressions)
-    tau_db = USE_TAU and tau.core.TauManager().getFactory()().getDatabase() or PyTango.Database()
-    if 'SimulationDatabase' in str(type(tau_db)):
-      print 'Using a simulated database ...'
+    db = get_database()
+    if 'SimulationDatabase' in str(type(db)): #used by TauWidgets displayable in QtDesigner
       models = expressions
     else:
-      all_devs = USE_TAU and tau_db.get_device_exported('*')
+      all_devs = db.get_device_exported('*')
       models = []
       for exp in expressions:
           print 'evaluating exp = "%s"' % exp
@@ -177,14 +200,12 @@ def get_all_models(expressions,limit=1000):
           for dev in devs:
               if any(c in attribute for c in '.*[]()+?'):
                   if '*' in attribute and '.*' not in attribute: attribute = attribute.replace('*','.*')
-                  #tau_dp = tau.core.TauManager().getFactory()().getDevice( 'test/sim/sergi')
                   try: 
-                      tau_dp = USE_TAU and tau.core.TauManager().getFactory()().getDevice(dev) or PyTango.DeviceProxy(dev)
-                      attrs = [att.name for att in tau_dp.attribute_list_query() if re_match_low(attribute,att.name)]
+                      dp = get_device(dev)
+                      attrs = [att.name for att in dp.attribute_list_query() if re_match_low(attribute,att.name)]
                       targets.extend(dev+'/'+att for att in attrs)
                   except Exception,e: print 'ERROR! Unable to get attributes for device %s: %s' % (dev,str(e))
               else: targets.append(dev+'/'+attribute)
-          #print 'TauGrid.get_all_models(): targets added by %s are: %s' % (exp,targets)
           models.extend(targets)
     models = models[:limit]
     return models
@@ -201,15 +222,6 @@ def attr2str(attr_value):
         return '%s%s(%s)' %(att_name,type(attr_value.value).__name__,attr_value.value)
     else: 
         return '%s%s(%s)' %(att_name,type(attr_value).__name__,attr_value)
-    
-def get_matching_attributes(dev,exprs,invert=False):
-    """ Returns all matched attributes from a device """
-    result = []
-    for a in PyTango.DeviceProxy(dev).get_attribute_list():
-        for expr in exprs:
-            if fun.xor(invert,re.match(expr,a)):
-                result.append(a)
-    return result
             
 def get_distinct_devices(attrs):
     """ It returns a list with the distinct device names appearing in a list """
@@ -514,6 +526,8 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
     By including log.Logger it also includes objects.Object as parent class.
     It allows to use call__init__(self, klass, *args, **kw) to avoid multiple inheritance from same parent problems.
     Therefore, use self.call__init__(PyTango.Device_4Impl,cl,name) instead of PyTango.Device_4Impl.__init__(self,cl,name)
+    
+    It also allows to connect several devices within the same server or not usint tau.core
     """
 
     ##@name State Machine methods
@@ -525,18 +539,18 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
         return bool( self.get_state() not in [PyTango.DevState.UNKNOWN,PyTango.DevState.INIT] )
     
     def set_state(self,state):
-        self.__state = state
-        PyTango.Device_4Impl.set_state(self,state)
+        self._state = state
+        type(self).mro()[type(self).mro().index(Dev4Tango)+1].set_state(self,state)
         
     def get_state(self):
         #This have been overriden as it seemed not well managed when connecting devices in a same server
-        return self.__state
+        return self._state
     
     def State(self):
         """ State redefinition is required to keep independency between 
         attribute configuration (max/min alarms) and the device State """
         #return self.get_state()
-        return self.__state
+        return self._state
     
     # DON'T TRY TO OVERLOAD STATUS(), It doesn't work that way.    
     #def Status(self):
@@ -572,8 +586,11 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
         """ A default initialization for the Logger class """ 
         print 'In %s.init_my_Logger ...'%self.get_name()
         try:
-            #Check if this class inherits from Logger
-            if isinstance(self,log.Logger):
+            #First try to use Tango Streams
+            if False: #hasattr(self,'error_stream'):
+                self.error,self.warning,self.info,self.debug = self.error_stream,self.warn_stream,self.info_stream,self.debug_stream
+            #Then Check if this class inherits from Logger
+            elif isinstance(self,log.Logger): 
                 self.call__init__(log.Logger,self.get_name(),format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
                 if hasattr(self,'LogLevel'): self.setLogLevel(self.LogLevel)
                 self.info('Logger streams initialized (error,warning,info,debug)')
@@ -690,7 +707,9 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
                 self.info ('::init_device(%s): Configuring TauAttribute for %s' % (self.get_name(),device+'/'+attribute))
                 aname = (device+'/'+attribute).lower()
                 at = Attribute(aname)
+                self.debug('Adding Listener ...')
                 at.addListener(self.event_received)
+                self.debug('Changing polling period ...')
                 at.changePollingPeriod(self.PollingCycle)
                 self.ExternalAttributes[aname] = at
         else: #Managing attributes from internal devices
@@ -707,10 +726,17 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
         self.info('Registered attributes are: %s'%self.ExternalAttributes.keys())    
         
     def unsubscribe_external_attributes(self):
-        if hasattr(self,'Event'):
-            self.Event.set()
-        if hasattr(self,'UpdateAttributesThread'):
-            self.UpdateAttributesThread.join(getattr(self,'PollingCycle',3000.))
+        try:
+            if hasattr(self,'Event'):
+                self.Event.set()
+            if hasattr(self,'UpdateAttributesThread'):
+                self.UpdateAttributesThread.join(getattr(self,'PollingCycle',3000.))            
+            from tau import Attribute
+            for at in self.ExternalAttributes.values():
+                if isinstance(at,Attribute):
+                    at.removeListener(self.event_received)
+        except Exception,e:
+            self.error('Dev4Tango.unsubscribe_external_attributes() failed: %s'%e)
         return
         
     def write_external_attribute(self,device,attribute,data):
@@ -760,11 +786,13 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
     def update_external_attributes(self):
         """ This thread replaces TauEvent generation in case that the attributes are read from a device within the same server. """
         while not self.Event.isSet():
-            for aname,attr in self.ExternalAttributes.items():
+            serverAttributes = [a for a,v in self.ExternalAttributes.items() if isinstance(v,fakeAttributeValue)]
+            for aname in serverAttributes:
+                if self.Event.isSet(): break                
+                attr = self.ExternalAttributes[aname]
                 device,attribute = aname.rsplit('/',1)
                 self.debug('====> updating values from %s.%s'%(device,attribute))
                 deviceObj = self.get_devs_in_server().get(device,None)
-                self.Event.wait(1e-3*(self.PollingCycle/len(self.ExternalAttributes)))
                 event_type = fakeEventType.lookup['Periodic']
                 try:                                
                     if attr.name.lower()=='state': 
@@ -790,9 +818,12 @@ class Dev4Tango(PyTango.Device_4Impl,log.Logger):
                             
                     self.info('Sending fake event: %s/%s = %s(%s)' % (device,attr.name,event_type,attr.value))
                     self.event_received(device+'/'+attr.name,event_type,attr)
-                    if self.Event.isSet(): break
-                except:
-                    print 'Exception in %s.update_attributes(%s): \n%s' % (self.get_name(),attr.name,traceback.format_exc())
+                except: 
+                    print 'Exception in %s.update_attributes(%s): \n%s' % (self.get_name(),attr.name,traceback.format_exc())                
+                
+                self.Event.wait(1e-3*(self.PollingCycle/len(serverAttributes)))                    
+                #End of for
+            #End of while
         self.info('%s.update_attributes finished')
         return         
                       
