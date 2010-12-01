@@ -98,6 +98,7 @@ from PyTango import AttrQuality
 from PyTango import DevState
 from excepts import *
 from objects import self_locked
+from dicts import SortedDict
 #from .excepts import Catched,ExceptionManager
 #from  . import log
 
@@ -110,7 +111,7 @@ except:
     USE_TAU=False
 if False and USE_TAU: from tau.core.utils import Logger #DEPRECATED
 else: from log import Logger
-    
+
 import os
 MEM_CHECK = str(os.environ.get('PYMEMCHECK')).lower() == 'true'
 if MEM_CHECK:
@@ -149,7 +150,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         #Internals
         self.dyn_attrs = {}
         self.dyn_types = {}
-        self.dyn_states = {}
+        self.dyn_states = SortedDict()
         self.dyn_values = {}
         self.variables = {}
         self.DEFAULT_POLLING_PERIOD = 3000.
@@ -177,8 +178,11 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._locals['EVAL'] = lambda formula: self.evaluateFormula(formula)
         self._locals['PROPERTY'] = lambda property,update=False: self.get_device_property(property,update)
         [self._locals.__setitem__(str(quality),quality) for quality in AttrQuality.values.values()]
-        for k,v in DevState.values.items():
-            self._locals[str(v)]=k
+        
+        #Adding states for convenience evaluation
+        self.TangoStates = PyTango.DevState.names
+        self._locals.update(self.TangoStates)
+        
         self._locals.update(_locals) #New submitted methods have priority over the old ones
 
         # Internal object references
@@ -204,7 +208,6 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         self._eval_times = {}
         self.GARBAGE = []
 
-        self.TangoStates = ['ON','OFF','CLOSE','OPEN','INSERT','EXTRACT','MOVING','STANDBY','FAULT','INIT','RUNNING','ALARM','DISABLE','UNKNOWN']
         self.useDynStates = useDynStates
         if self.useDynStates:
             self.info('useDynamicStates is set, disabling automatic State generation by attribute config.'+
@@ -215,6 +218,9 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
     def delete_device(self):
         self.info( 'DynamicDS.delete_device(): ... ')
         ('Device_4Impl' in dir(PyTango) and PyTango.Device_4Impl or PyTango.Device_3Impl).delete_device(self)
+        
+    def get_parent_class(self):
+        return type(self).mro()[type(self).mro().index(DynamicDS)+1]
 
     def prepare_DynDS(self):
         """
@@ -232,6 +238,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             if not self.__prepared: self.prepare_DynDS() #This code is placed here because its proper execution cannot be guaranteed during init_device()
             self.myClass.DynDev=self #VITAL: It tells the admin class which device attributes are going to be read
             if self.dyn_states: self.check_state()
+            if self.DynamicStatus: self.check_status()
         except:
             self.last_state_exception = 'Exception in DynamicDS::always_executed_hook():\n'+str(traceback.format_exc())
             self.error(self.last_state_exception)
@@ -394,16 +401,27 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         if not hasattr(self,'DynamicStates'):
             self.error('DynamicDS property NOT INITIALIZED!')
             
-        for line in self.DynamicStates:
-            # The character '#' is used for comments
-            if not line.strip() or line.strip().startswith('#'): continue
-            fields = (line.split('#')[0]).split('=',1)
-            if not fields or len(fields) is 1 or '' in fields:
-                self.debug( self.get_name()+".dyn.attr(): wrong format in DynamicStates Property!, "+line)
-                continue
-            else:
-                self.dyn_states[fields[0].upper()]={'formula':fields[1],'compiled':compile(fields[1].strip(),'<string>','eval')}
-                self.info(self.get_name()+".dyn_attr(): new DynamicState '"+ fields[0]+"' = '"+fields[1]+"'")
+        if self.DynamicStates:
+            self.dyn_states = SortedDict()
+            def add_state_formula(st,formula):
+                self.dyn_states[st]={'formula':formula,'compiled':compile(formula,'<string>','eval')}
+                self.info(self.get_name()+".dyn_attr(): new DynamicState '"+ st+"' = '"+formula+"'")
+            for line in self.DynamicStates:
+                # The character '#' is used for comments
+                if not line.strip() or line.strip().startswith('#'): continue
+                fields = (line.split('#')[0]).split('=',1)
+                if not fields or len(fields) is 1 or '' in fields:
+                    self.debug( self.get_name()+".dyn.attr(): wrong format in DynamicStates Property!, "+line)
+                    continue
+
+                st,formula = fields[0].upper().strip(),fields[1].strip()
+                if st in self.TangoStates:
+                    add_state_formula(st,formula)
+                elif st == 'STATE':
+                    [add_state_formula(s,'int(%s)==int(%s)'%(s,formula))
+                        for s in self.TangoStates if not any(l.startswith(s) for l in self.DynamicStates)]
+                else:
+                    self.debug( self.get_name()+".dyn.attr(): Unknown State: %s"%line)
 
         for line in self.DynamicAttributes:
             if not line.strip() or line.strip().startswith('#'): continue
@@ -614,8 +632,10 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                 't':time.time()-self.time0,
                 'WRITE':WRITE,
                 'READ':bool(not WRITE),
-                'NAME':aname,
+                'ATTRIBUTE':aname,
+                'NAME':self.get_name(),
                 'VALUE':VALUE,
+                'STATE':self.get_state()
                 }) #It is important to keep this values persistent; becoming available for quality/date/state/status management
             if USE_LOCALS: __locals.update(self._locals) #Second priority: object statements
             if _locals is not None: __locals.update(_locals) #High Priority: variables passed as argument
@@ -658,7 +678,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         ... To customize it: copy it to your device and add any method you will need
         @remark Generators don't work  inside eval!, use lists instead
         """
-        self.debug('DynamicDS.evalState('+str(formula)+')')
+        self.debug('DynamicDS.evalState(%s)'%(isinstance(formula,str) and formula or 'code'))
         #MODIFIIED!! to use pure DynamicAttributes
         #Attr = lambda a: self.dyn_values[a].value
         t = time.time()-self.time0
@@ -666,6 +686,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         __locals=locals().copy() #Low priority: local variables
         __locals.update(self._locals) #Second priority: object statements
         __locals.update(_locals) #High Priority: variables passed as argument
+        __locals.update({'STATE':self.get_state(),'t':time.time()-self.time0,'NAME': self.get_name()})
         #print 'IN EVALSTATE LOCALS ARE:\n',__locals
         return eval(formula,self._globals,__locals)
 
@@ -881,50 +902,64 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
 
     def rawState(self):
         state = self.get_state()
-        self.debug('In DynamicDS.State()='+self.TangoStates[state]+', overriding attribute-based State.')
+        self.debug('In DynamicDS.State()='+str(state)+', overriding attribute-based State.')
         return state
 
-    def set_full_status(self,status):
+    def set_state(self,state):
+        self._locals['STATE']=state
+        DynamicDS.get_parent_class(self).set_state(self,state)
+
+    def check_state(self,set=True):
+        '''    The thread automatically close if there's no activity for 5 minutes,
+            an always_executed_hook call or a new event will restart the thread.
+        '''
+        if self.dyn_states:
+            old_state = self.get_state()
+            self.debug('In DynamicDS.check_state()')
+            ## @remarks: the device state is not changed if none of the DynamicStates evaluates to True
+            #self.set_state(PyTango.DevState.UNKNOWN)
+            self.last_state_exception = ''
+            for state,value in self.dyn_states.items():
+                nstate,formula,code=state,value['formula'],value['compiled']
+                if nstate not in self.TangoStates: continue
+                result=None
+                try: 
+                    result=self.evalState(code) #Use of self.evalState allows to overload it
+                except Exception,e:
+                    self.error('DynamicDS(%s).check_state(): Exception in evalState(%s): %s'%(self.get_name(),formula,str(traceback.format_exc())))
+                    self.last_state_exception += '\n'+time.ctime()+': '+str(traceback.format_exc())
+                self.info('In DynamicDS.check_state(): %s = %s = %s' % (state,result,value['formula']))
+                if result:
+                    if set: self.set_state(self.TangoStates[nstate])
+                    self.info('DynamicDS(%s.check_state(): New State is %s := %s'%(self.get_name(),nstate,formula))
+                    break
+        else: 
+            state = self.get_state()
+        return state
+    
+    def set_status(self,status):
+        if not any('STATUS' in s for s in self.DynamicStatus):
+            self._locals['STATUS']=status
+        DynamicDS.get_parent_class(self).set_status(self,status)
+        
+    def set_full_status(self,status,set=True):
         if self.last_state_exception:
             status += '\nLast DynamicStateException was:\n\t'+self.last_state_exception
         if self.last_attr_exception:
             status += '\nLast DynamicAttributeException was:\n\t'+self.last_attr_exception
-        self.set_status(status)
-
-    def set_state(self,state):
-        #print 'STATE ADDED TO LOCALS!!!'
-        self._locals['State']=state
-        PyTango.Device_4Impl.set_state(self,state)
-        #print 'STATE ADDED TO LOCALS!!!'
-
-    def check_state(self):
-        '''    The thread automatically close if there's no activity for 5 minutes,
-            an always_executed_hook call or a new event will restart the thread.
-        '''
-        dyn_states = self.dyn_states
-        if not dyn_states:
-            self.debug('Dynamic States is Empty!!!')
-            return
-
-        self.debug('In DynamicDS.check_state')
-        ## @remarks: the device state is not changed if none of the DynamicStates evaluates to True
-        #self.set_state(PyTango.DevState.UNKNOWN)
-        self.last_state_exception = ''
-        for state,value in dyn_states.items():
-            nstate,formula,code=state,value['formula'],value['compiled']
-            if nstate not in self.TangoStates: continue
-            result=None
+        if set: self.set_status(status)
+        return status
+    
+    def check_status(self,set=True):
+        status = self.get_status()
+        if self.DynamicStatus:
+            self.debug('In DynamicDS.check_status')
             try:
-                result=self.evalState(code) #Use of self.evalState allows to overload it
+                status = '\n'.join([self.evaluateFormula(s) for s in self.DynamicStatus])
+                if set: self.set_status(status)
             except Exception,e:
-                self.error('DynamicDS(%s).check_state(): Exception in evalState(%s): %s'%(self.get_name(),formula,str(traceback.format_exc())))
-                self.last_state_exception += '\n'+time.ctime()+': '+str(traceback.format_exc())
-            if result:
-                self.set_state(PyTango.DevState(self.TangoStates.index(nstate)))
-                self.info('DynamicDS(%s.check_state(): State changed to %s=%s'%(self.get_name(),nstate,formula))
-                break
-        self.debug('DynamicDS.check_state: finished')
-        return
+                self.warning('Unable to generate DynamicStatus:\n%s'%traceback.format_exc())
+        return status
 
 #------------------------------------------------------------------------------------------------------
 #   Lock/Unlock Methods
@@ -948,15 +983,6 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         @warning : It will DELETE all attributes that does not appear in DynamicAttributes property or StaticAttributes list!
         """
         self.get_DynDS_properties()
-        
-        #self.dyn_types[aname]=dyntype
-        #if aname not in self.dyn_values:
-            #create = True
-        #elif formula != self.dyn_values[aname].formula or dyntype != self.dyn_values[aname].type:
-            ### If the attribute already exists but has changed it must be removed from the device:
-            #self.remove_attribute(aname)
-            #create = True
-        #else: create = False        
         
         ##All attributes managed with dyn_attr() that does not appear in DynamicAttributes or StaticAttributes list will be removed!
         attrs_list = [name.split('=',1)[0].strip() for name in (self.DynamicAttributes + (hasattr(self,'StaticAttributes') and self.StaticAttributes or []))]
@@ -983,7 +1009,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
     #------------------------------------------------------------------
     #Methods started with underscore could be inherited by child device servers for debugging purposes
     def evaluateFormula(self,argin):
-        argout=str(self.evalAttr(str(argin)))
+        argout=str(self.evalState(str(argin)))
         return argout
 
     """
@@ -1075,7 +1101,11 @@ class DynamicDSClass(PyTango.DeviceClass):
         'DynamicQualities':
             [PyTango.DevVarStringArray,
             "This property will allow to declare formulas for Attribute Qualities.",
-            [] ],            
+            [] ],       
+        'DynamicStatus':
+            [PyTango.DevVarStringArray,
+            "Each line generated by this property code will be added to status",
+            [] ],
         'KeepAttributes':
             [PyTango.DevVarStringArray,
             "This property can be used to store the values of only needed attributes; values are 'yes', 'no' or a list of attribute names",
