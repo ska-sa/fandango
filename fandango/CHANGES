@@ -1,8 +1,24 @@
+
+PyTango_utils 1st December 2010
+-------------------------------------------
+dynamic: WATTR added for writing external attributes
+dynamic: Added XDEV=getXDevice to access DeviceProxies from dynamic attributes
+dynamic: evalAttr replaced by evalState inside evaluateFormula (no dependencies check, no Write access)
+dynamic: DynamicStatus property parsing added
+dynamic: Tango states added as eval variables
+
+device: Dev4Tango update_attributes changed to be more efficient checking attributes from same server
+device: Added/improved methods to access Tango database
+
+objects: Added Pool ; a class for managing queued-threaded tasks
+
+
 PyTango_utils 9th November 2010
 -------------------------------------------
 device: Added methods to access device info/host
 dynamic: Added property to disable dependencies check between attributes.
 functional: added isGenerator method
+ThreadDict improved
 
 PyTango_utils bliss-8.15, 3rd november 2010
 -------------------------------------------
