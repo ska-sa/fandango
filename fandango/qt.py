@@ -16,7 +16,8 @@ class TauEmitterThread(QtCore.QThread):
     It is useful to delay signals in a background thread.
     :param parent: a Qt/Tau object
     :param queue: if None parent.getQueue() is used, if not then the queue passed as argument is used
-    :param target: the method to be executed using each queue item as argument
+    :param method: the method to be executed using each queue item as argument
+    :param cursor: if True or QCursor a custom cursor is set while the Queue is not empty
     
     USAGE
     -----
@@ -49,10 +50,12 @@ class TauEmitterThread(QtCore.QThread):
                 ...
                 if hasattr(self,'modelsThread') and not self.modelsThread.isRunning(): 
                     self.modelsThread.start()
+                elif self.modelsQueue.qsize():
+                    self.modelsThread.next()
                 ...    
         </pre>
     """
-    def __init__(self, parent=None,queue=None,method=None):
+    def __init__(self, parent=None,queue=None,method=None,cursor=None):
         """
         Parent most not be None and must be a TauGraphicsScene!
         :param method: function to be applied for any argument list stored in the queue, if None the first argument of the list will be used as method
@@ -61,16 +64,18 @@ class TauEmitterThread(QtCore.QThread):
             #raise RuntimeError("Illegal parent for TauGraphicsUpdateThread")
         QtCore.QThread.__init__(self, parent)
         self.log = Logger('TauEmitterThread')
-        self.log.setLogLevel(self.log.Debug)
+        self.log.setLogLevel(self.log.Info)
         self.queue = queue or Queue.Queue()
         self.todo = Queue.Queue()
         self.method = method
+        self.cursor = Qt.QCursor(Qt.Qt.WaitCursor) if cursor is True else cursor
+        self._cursor = False
         self.emitter = QtCore.QObject()
-        self.emitter.moveToThread(QtGui.QApplication.instance().thread()) 
+        self.emitter.moveToThread(QtGui.QApplication.instance().thread())
         self.emitter.setParent(QtGui.QApplication.instance())
         self._done = 0
         QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("doSomething"), self._doSomething)
-        QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("somethingDone"), self.next)
+        QtCore.QObject.connect(self.emitter, QtCore.SIGNAL("somethingDone"), self.next)          
         
     def getQueue(self):
         if self.queue: return self.queue
@@ -96,20 +101,27 @@ class TauEmitterThread(QtCore.QThread):
         self.emitter.emit(QtCore.SIGNAL("somethingDone"))
         self._done += 1
         return
-        
+                
     def next(self):
         queue = self.getQueue()
-        self.log.debug('At TauEmitterThread.next(), %d items remaining.' % queue.qsize())
-        if queue.qsize() or not queue.empty():
-            try:
+        (queue.empty() and self.log.info or self.log.debug)('At TauEmitterThread.next(), %d items remaining.' % queue.qsize())
+        try:
+            if not queue.empty():            
+                if not self._cursor and self.cursor is not None: 
+                    QtGui.QApplication.instance().setOverrideCursor(Qt.QCursor(self.cursor))
+                    self._cursor=True                
                 item = queue.get(False) #A blocking get here would hang the GUIs!!!
                 self.todo.put(item)
                 self.log.debug('Item added to todo queue: %s' % str(item))
-            except Queue.Empty,e:
-                self.log.warning(traceback.format_exc())
-                pass
-            except: 
-                self.log.warning(traceback.format_exc())
+            elif self._cursor: 
+                QtGui.QApplication.instance().restoreOverrideCursor()
+                self._cursor = False        
+                
+        except Queue.Empty,e:
+            self.log.warning(traceback.format_exc())
+            pass
+        except: 
+            self.log.warning(traceback.format_exc())
         return
         
     def run(self):
