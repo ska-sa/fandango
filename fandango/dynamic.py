@@ -99,6 +99,8 @@ from PyTango import DevState
 from excepts import *
 from objects import self_locked
 from dicts import SortedDict
+import functional as fun
+
 #from .excepts import Catched,ExceptionManager
 #from  . import log
 
@@ -611,7 +613,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             if self.CheckDependencies and aname in self.dyn_values:
                 if not self.dyn_values[aname].dependencies:
                     for k,v in self.dyn_values.items():
-                        if k in formula and k.lower().strip()!=aname.lower().strip():
+                        found = fun.searchCl("(^|[^'_0-9a-z])%s($|[^'_0-9a-z])"%k,formula)
+                        if found and k.lower().strip()!=aname.lower().strip():
                             self.dyn_values[aname].dependencies.add(k)
                             self.dyn_values[k].keep = True
                             
