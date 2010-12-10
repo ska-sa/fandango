@@ -43,6 +43,8 @@
 from __builtin__ import object
 from functional import *
 from operator import isCallable
+try: from collections import namedtuple #Only available since python 2.6
+except: pass
 
 ## Useful class objects
 
