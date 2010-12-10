@@ -280,6 +280,27 @@ class defaultdict_fromkey(collections.defaultdict):
         self[key] = value = self.default_factory(key)
         return value
         
+class CaselessList(list):
+    """
+    Python list with caseless index,contains,remove methods
+    """
+    def _lowstreq(self,a,b):
+        return (a==b) or (hasattr(a,'lower') and hasattr(b,'lower') and a.lower()==b.lower())
+    def __contains__(self,item):
+        for k in self:
+            if self._lowstreq(k,item): 
+                return True
+        return False
+    def index(self,item):
+        for i,k in enumerate(self):
+            if self._lowstreq(k,item):
+                return i
+        return None
+    def __contains__(self,item):
+        return self.index(item) is not None
+    def remove(self,item):
+        list.pop(self,self.index(item))        
+        
 class CaselessDict(dict):
     """     Dictionary with caseless key resolution 
     Copied from tau.core.utils.CaselessDict
