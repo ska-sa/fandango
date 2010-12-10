@@ -55,7 +55,7 @@ class TauEmitterThread(QtCore.QThread):
                 ...    
         </pre>
     """
-    def __init__(self, parent=None,queue=None,method=None,cursor=None):
+    def __init__(self, parent=None,queue=None,method=None,cursor=None,sleep=5000):
         """
         Parent most not be None and must be a TauGraphicsScene!
         :param method: function to be applied for any argument list stored in the queue, if None the first argument of the list will be used as method
@@ -70,6 +70,8 @@ class TauEmitterThread(QtCore.QThread):
         self.method = method
         self.cursor = Qt.QCursor(Qt.Qt.WaitCursor) if cursor is True else cursor
         self._cursor = False
+        self.sleep = sleep
+        
         self.emitter = QtCore.QObject()
         self.emitter.moveToThread(QtGui.QApplication.instance().thread())
         self.emitter.setParent(QtGui.QApplication.instance())
@@ -87,7 +89,6 @@ class TauEmitterThread(QtCore.QThread):
         return self._done/(self._done+self.getQueue().qsize()) if self._done else 0.
 
     def _doSomething(self,args):
-        print '#'*80
         self.log.debug('At TauEmitterThread._doSomething(%s)'%str(args))
         if not self.method: 
             method,args = args[0],args[1:]
@@ -125,6 +126,7 @@ class TauEmitterThread(QtCore.QThread):
         return
         
     def run(self):
+        Qt.QApplication.instance().thread().wait(self.sleep)
         print '#'*80
         self.log.info('At TauEmitterThread.run()')
         self.next()
