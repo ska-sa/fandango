@@ -133,7 +133,7 @@ def matchAny(exprs,seq):
     """ Returns seq if any of the expressions in exp is matched, if not it returns None """
     exprs = toSequence(exprs)
     for exp in exprs:
-        if matchCl(toRegexp(exp),seq): return seq
+        if matchCl(exp,seq): return seq
     return None
     
 def matchMap(mapping,key,regexp=True):
@@ -181,6 +181,7 @@ clsearch = searchCl #For backward compatibility
 
 def toRegexp(exp,terminate=False):
     """ Replaces * by .* and ? by . in the given expression. """
+    exp = str(exp)
     exp = exp.replace('*','.*') if '*' in exp and '.*' not in exp else exp
     #exp = exp.replace('?','.') if '?' in exp and not any(s in exp for s in (')?',']?','}?')) else exp
     if terminate and not exp.strip().endswith('$'): exp += '$'
@@ -195,7 +196,9 @@ def toRegexp(exp,terminate=False):
         
 def isString(seq):
     if isinstance(seq,basestring): return True # It matches most python str-like classes
-    return 'string' in str(type(seq)).lower() # It matches QString amongst others
+    if any(s in str(type(seq)).lower() for s in ('vector','array','list',)): return False
+    if 'qstring' == str(type(seq)).lower(): return True # It matches QString
+    return False
     
 def isRegexp(seq):
     RE = r'.^$*+?{[]\|()'
