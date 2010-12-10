@@ -1,3 +1,11 @@
+PyTango_utils 10 December 2010
+-------------------------------------------
+dicts: added CaselessList
+dynamic: dependencies checked using regexps
+functional: added str casting in regular expression conversion; bug solved in isString method
+qt: added a 'thinking' cursor behaviour, added a .wait(sleep) to main thread in the run() method
+objects: added namedtuple
+
 
 PyTango_utils 1st December 2010
 -------------------------------------------
