@@ -63,7 +63,7 @@ except:
     print 'Unable to import device module'
     
 try:
-    from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration,SortedDict
+    from dicts import ThreadDict,CaselessDict,ReversibleDict,CaselessDefaultDict,DefaultThreadDict,Enumeration,SortedDict,CaselessList
 except: print 'Unable to import dicts module'
 
 try:
