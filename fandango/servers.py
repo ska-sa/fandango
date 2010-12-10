@@ -171,7 +171,7 @@ class TServer(Object):
                 try:
                     result[device] = self.proxies[device].State()
                 except Exception,e:
-                    self.log.warning('Unable to read %s state: %s' % (device,str(e)))
+                    self.log.warning('Unable to read %s state: %s' % (device,str(e)[:100]+'...'))
                     result[device] = None #PyTango.DevState.UNKNOWN
         return result
                 
@@ -186,7 +186,7 @@ class TServer(Object):
                 result[reply.dev_name()] = reply.get_data()
             return result
         except Exception,e:
-            print 'Unable to read all Status from %s: %s' % (self.name,str(e))
+            print 'Unable to read all Status from %s: %s' % (self.name,str(e)[:100]+'...')
             return result
     
 ####################################################################################################################
@@ -334,7 +334,7 @@ class ServersDict(CaselessDict,Object):
                 ss.init_from_db(self.db)
                 self[s] = ss
             except Exception,e:
-                self.log.warning('exception loading %s server: %s' % (s,str(e)))
+                self.log.warning('exception loading %s server: %s' % (s,str(e)[:100]+'...'))
                 print traceback.format_exc()
         pass
                     
@@ -408,7 +408,7 @@ class ServersDict(CaselessDict,Object):
                 server,host,klass = info[1][3:6]
                 return server
             except Exception,e:
-                self.log.error('Impossible to retrieve server for device %s: %s'%(device,str(e)))
+                self.log.error('Impossible to retrieve server for device %s: %s'%(device,str(e)[:100]+'...' ))
                 self.log.warning('Try ServersDict.load_all_servers (time consuming)')
         pass
         
@@ -537,7 +537,7 @@ class ServersDict(CaselessDict,Object):
                     else: self.log.debug('%s.ping() ... Alive'%(server)) #LOG DOESNT WORK IN THREADS
                     return value
                 except Exception,e:
-                    return str(e)#str(traceback.format_exc())
+                    return str(e)[:100]+'...'#str(traceback.format_exc())
             lock = threading.Lock()
             wait = threading.Event().wait
             start = time.time()
@@ -632,8 +632,8 @@ class ServersDict(CaselessDict,Object):
                     except: pass
                     ct-=1
             except Exception,e:
-                print 'Exception StartingServer %s: %s'%(s_name,str(e))
-                self.log.error('Exception StartingServer %s: %s'%(s_name,str(e)))
+                print 'Exception StartingServer %s: %s'%(s_name,str(e)[:100]+'...')
+                self.log.error('Exception StartingServer %s: %s'%(s_name,str(e)[:100]+'...'))
             t1 = time.time()
             if not done:
                 self.log.warning('The server %s Start couldnt be verified after %s seconds'%(s_name,(t1-t0)))
@@ -679,7 +679,7 @@ class ServersDict(CaselessDict,Object):
                     server.get_proxy().command_inout('Kill')
                     done = True
                 except Exception,e:
-                    self.log.error('Exception in server_Stop(%s): %s'%(server.name,str(e)))
+                    self.log.error('Exception in server_Stop(%s): %s'%(server.name,str(e)[:100]+'...'))
             else:
                 self.log.info( 'KillingServer %s (idle or not running)' % server.name)
                 try:
@@ -732,7 +732,7 @@ class ServersDict(CaselessDict,Object):
                 starter.HardKillServer(server_name)
                 done = True
             except Exception,e:
-                self.log.error('Exception in kill_servers(%s): %s'%(server_name,str(e)))
+                self.log.error('Exception in kill_servers(%s): %s'%(server_name,str(e)[:100]+'...'))
                         
         hosts = [self[s].host for s in servers_list if s in self]
         for host in hosts:
@@ -768,7 +768,7 @@ class ServersDict(CaselessDict,Object):
                 os.system(comm)
                 print 'hard_kill: Process killed'
             except Exception,e:
-                print 'hard_kill: Unable to kill process, %s' % str(e)
+                print 'hard_kill: Unable to kill process, %s' % (str(e)[:100]+'...')
             return True
         else:
             print('hard_kill: Process %s not found, not killed.')
