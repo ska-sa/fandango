@@ -148,6 +148,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         #Tango Properties
         self.DynamicAttributes = []
         self.DynamicStates = []
+        self.DynamicStatus = []
         self.CheckDependencies = True
         #Internals
         self.dyn_attrs = {}
@@ -260,32 +261,42 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
 
     def get_DynDS_properties(self,db=None):
         """
-        It forces Device properties reading using the Database device.
+        It forces DynamicDevice properties reading using the Database device.
+        It has to be used as subclasses may not include all Dynamic* properties in their class generation.
         It is used by self.updateDynamicAttributes() and required in PyTango<3.0.4
         """
         ## THIS FUNCTION IS USED FROM updateDynamicAttributes
+        self.get_device_properties(self.get_device_class()) #It will reload all properly specified properties
         
-        if not db: db = PyTango.Database()
+        #Loading class properties
+        if not getattr(self,'DynamicSpectrumSize',False):
+            U = PyTango.Util.instance()
+            self._db = getattr(self,'_db',U.get_database())
+            props = self._db.get_class_property(self.get_name(),['DynamicSpectrumSize'])
+            for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
+            self.DynamicSpectrumSize=props['DynamicSpectrumSize']        
         
-        props = db.get_class_property(self.get_name(),['DynamicSpectrumSize'])
-        for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
-        self.DynamicSpectrumSize=props['DynamicSpectrumSize']        
-        
-        props = db.get_device_property(self.get_name(),['DynamicAttributes','DynamicStates','DynamicImports','DynamicQualities','KeepAttributes','CheckDependencies'])
-        for p in props.keys(): self.info(self.get_name()+'.'+str(p)+'="'+str(props[p])+'"')
-        self.DynamicAttributes=props['DynamicAttributes']
-        self.DynamicStates=props['DynamicStates']
-        self.DynamicImports=props['DynamicImports']
-        self.DynamicQualities=props['DynamicQualities']
-        self.KeepAttributes=props['KeepAttributes']
+        #Loading DynamicDS specific properties
+        targets = [p for p in DynamicDSClass.device_property_list.keys() if p not in getattr(self.get_device_class(),'device_property_list',[])]
+        if targets:
+            self._db = getattr(self,'_db',None) or PyTango.Database()
+            props = self._db.get_device_property(self.get_name(),targets)
+            self.DynamicAttributes=props['DynamicAttributes']
+            self.DynamicStates=props['DynamicStates']
+            self.DynamicImports=props['DynamicImports']
+            self.DynamicQualities=props['DynamicQualities']
+            self.KeepAttributes=props['KeepAttributes']
         try: self.CheckDependencies=props['CheckDependencies'][0]
-        except: 
-            self.error(traceback.format_exc())
+        except Exception,e: 
+            self.error(str(e))
             self.CheckDependencies=True
+        
+        for p in DynamicDSClass.device_property_list: 
+            self.info(self.get_name()+'.'+str(p)+'="'+str(getattr(self,p,None))+'"')
         
     def get_device_property(self,property,update=False):
         if update or not hasattr(self,property):
-            setattr(self,property,PyTango.Database().get_device_property(self.get_name(),[property])[property])
+            setattr(self,property,self._db.get_device_property(self.get_name(),[property])[property])
         value = getattr(self,property) 
         return value[0] if type(value) is list else value
 
@@ -298,11 +309,11 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         Polling configuration configured through properties has preference over the hard-coded values.
         '''
         self.info('In check_polled_attributes(%s)'%new_attr)
-        self.db = db = db or (hasattr(self,'db') and getattr(self,'db')) or PyTango.Database()
+        self._db = getattr(self,'_db',None) or PyTango.Database()
         my_name = self.get_name()
         
         new_attr = dict.fromkeys(new_attr,self.DEFAULT_POLLING_PERIOD) if isinstance(new_attr,list) else new_attr
-        props = db.get_device_property(my_name,['DynamicAttributes','polled_attr'])
+        props = self._db.get_device_property(my_name,['DynamicAttributes','polled_attr'])
         npattrs = []
         
         dyn_attrs = [k.split('=')[0].lower().strip() for k in props['DynamicAttributes'] if k and not k.startswith('#')]
@@ -353,7 +364,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                     print 'Unable to set %s polling' % (npattrs[i])
                     print traceback.format_exc()
         else:
-            db.put_device_property(my_name,{'polled_attr':npattrs})
+           self._db.put_device_property(my_name,{'polled_attr':npattrs})
         self.info('Out of check_polled_attributes ...')
         
     def attribute_polling_report(self):
@@ -1207,11 +1218,10 @@ def CreateDynamicCommands(ds,ds_class):
     #srubio: it has been added for backward compatibility
     PyPLC.WriteBit,PyPLCClass.cmd_list['WriteBit']=PyPLC.WriteFlag,[[PyTango.DevVarShortArray, "DEPRECATED, Use WriteFlag instead"], [PyTango.DevVoid, "DEPRECATED, Use WriteFlag instead"]]
     """
-    
     U = PyTango.Util.instance()
     server = U.get_ds_name()
     print 'In DynamicDS.CreateDynamicCommands(%s)'%(server)
-    db = PyTango.Database()    
+    db = U.get_database()
     #devices = DynamicDSClass('DynamicDS').get_devs_in_server()    
     classes = list(db.get_device_class_list(server))
     print 'class = %s; classes = %s' % (ds.__name__,classes)
@@ -1224,7 +1234,7 @@ def CreateDynamicCommands(ds,ds_class):
     
     for dev in devs:
         print 'In DynamicDS.CreateDynamicCommands(%s.%s)'%(server,dev)
-        prop = db.get_device_property(dev,['DynamicCommands'])['DynamicCommands']
+        prop =db.get_device_property(dev,['DynamicCommands'])['DynamicCommands']
         lines = [l for l in [d.split('#')[0].strip() for d in prop] if l]
         ds.dyn_comms.update([(dev+'/'+l.split('=',1)[0].strip(),l.split('=',1)[1].strip()) for l in lines])
         print 'dyn_comms = %s' % ds.dyn_comms
@@ -1242,7 +1252,7 @@ def CreateDynamicCommands(ds,ds_class):
                     str(obj.evalAttr(ds.dyn_comms[obj.get_name()+'/'+cmd_name]))
                     )[1]
                 )
-            print dir(ds)
+    print 'Out of DynamicDS.CreateDynamicCommands(%s)'%(server)
     return
     
 class DynamicAttribute(object):
