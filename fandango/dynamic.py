@@ -183,7 +183,7 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
         [self._locals.__setitem__(str(quality),quality) for quality in AttrQuality.values.values()]
         
         #Adding states for convenience evaluation
-        self.TangoStates = PyTango.DevState.names
+        self.TangoStates = dict((str(v),v) for k,v in PyTango.DevState.values.items())
         self._locals.update(self.TangoStates)
         
         self._locals.update(_locals) #New submitted methods have priority over the old ones
@@ -277,7 +277,8 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
             self.DynamicSpectrumSize=props['DynamicSpectrumSize']        
         
         #Loading DynamicDS specific properties
-        targets = [p for p in DynamicDSClass.device_property_list.keys() if p not in getattr(self.get_device_class(),'device_property_list',[])]
+        #targets = [p for p in DynamicDSClass.device_property_list.keys() if p not in getattr(self.get_device_class(),'device_property_list',[])]
+        targets = DynamicDSClass.device_property_list.keys()
         if targets:
             self._db = getattr(self,'_db',None) or PyTango.Database()
             props = self._db.get_device_property(self.get_name(),targets)
