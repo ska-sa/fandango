@@ -67,22 +67,46 @@ try:
 except:
     USE_TAU=False
 
+####################################################################################################################
+##@name Access Tango Devices and Database
+
+##TangoDatabase singletone, This object is not thread safe, use TAU database if possible
+global TangoDatabase,TangoDevice
+TangoDatabase,TangoDevice = None,None
+
+def get_database(): 
+    global TangoDatabase
+    if TangoDatabase is None:
+        try: 
+            TangoDatabase = USE_TAU and tau.Database() or PyTango.Database()
+        except: pass
+    return TangoDatabase
+
 def get_device(dev): 
     #return USE_TAU and tau.core.TauManager().getFactory()().getDevice(dev) or PyTango.DeviceProxy(dev)
     return USE_TAU and tau.Device(dev) or PyTango.DeviceProxy(dev)
 
-##TangoDatabase singletone, This object is not thread safe, use TAU database if possible
+def get_database_device(): 
+    global TangoDevice
+    if TangoDevice is None:
+        try:
+           TangoDevice = get_device(TangoDatabase.dev_name())
+        except: pass
+    return TangoDevice
+
 try:
     #TangoDatabase = USE_TAU and tau.core.TauManager().getFactory()().getDatabase() or PyTango.Database()
-    TangoDatabase = USE_TAU and tau.Database() or PyTango.Database()
-    TangoDevice = get_device(TangoDatabase.dev_name())
-except:
-    TangoDatabase = None
-    TangoDevice = None
+    TangoDatabase = get_database()
+    TangoDevice = get_database_device()
+except: pass
     
-def get_database(): return TangoDatabase
-def get_database_device(): return TangoDevice
-    
+def add_new_device(server,klass,device):
+    dev_info = PyTango.DbDevInfo()
+    dev_info.name = device
+    dev_info.klass = klass
+    dev_info.server = server
+    get_database().add_device(dev_info)    
+
 ####################################################################################################################
 ##@name Methods for searching the database with regular expressions
 #@{
