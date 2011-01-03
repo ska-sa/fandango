@@ -42,7 +42,9 @@ import time,datetime
 from operator import isCallable
 from functools import partial
 from itertools import count,cycle,repeat,chain,groupby,islice,imap,starmap
-from itertools import dropwhile,takewhile,ifilter,ifilterfalse,izip,combinations,permutations,product
+from itertools import dropwhile,takewhile,ifilter,ifilterfalse,izip
+try: from itertools import combinations,permutations,product
+except: pass
 
 __all__ = ['partial','first','last','anyone','everyone','isString','isNumber','isSequence','isDictionary','isIterable']
 
@@ -133,7 +135,9 @@ def matchAny(exprs,seq):
     """ Returns seq if any of the expressions in exp is matched, if not it returns None """
     exprs = toSequence(exprs)
     for exp in exprs:
-        if matchCl(exp,seq): return seq
+        if matchCl(exp,seq): 
+            #print '===============>   matchAny(): %s matched by %s' % (seq,exp)
+            return seq
     return None
     
 def matchMap(mapping,key,regexp=True):
