@@ -853,12 +853,12 @@ class DynamicDS(PyTango.Device_4Impl,Logger):
                 exprs = {}
                 [exprs.__setitem__(line.split('=')[0].strip(),line.split('=')[1].strip()) for line in self.DynamicQualities if '=' in line and not line.startswith('#')]
                 for exp,value in exprs.items():
-                    if '*' in exp and '.*' not in exp: exp.replace('*','.*')
+                    if '*' in exp and '.*' not in exp: exp=exp.replace('*','.*')
                     if not exp.endswith('$'): exp+='$'
                     try:
                         match = re.match(exp,aname)
                     except Exception,e:
-                        self.warning('In get_quality_for_attribute, re.match(%s,%s) failed' % (exp,aname))
+                        self.warning('In get_quality_for_attribute, re.match(%s(%s),%s(%s)) failed' % (type(exp),exp,type(aname),aname))
                         raise e                        
                     if match: 
                         print 'There is a Quality for this attribute!: '+str((aname,exp,value))
