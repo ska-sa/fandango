@@ -49,11 +49,19 @@ try:
     PATH = os.path.dirname(objects.__file__)
     ReleaseNumber = type('ReleaseNumber',(tuple,),{'__repr__':(lambda self:'.'.join(('%02d'%i for i in self)))})
     #print 'Fandango Release number: %s, loaded from %s/CHANGES' % (ReleaseNumber,PATH)
-    # import IPython ; IPython.embed()
     RELEASE = ReleaseNumber(imp.load_source('changelog',PATH+'/CHANGES').RELEASE)
 except Exception,e: 
     print traceback.format_exc()
     print 'Unable to load RELEASE number: %s'%e
+
+try:
+    import pkg_resources
+    __version__ = pkg_resources.get_distribution(__name__).version
+except Exception, e:
+    __version__ = None
+    print traceback.format_exc()
+    print ('Unable to get distribution version number, fandango has '
+           'probably not been installed as a package')
 
 try:
     from functional import *

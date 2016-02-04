@@ -17,7 +17,7 @@ setup(
     "implementing the behavior of Jive (configuration) and/or Astor (deployment) "
     "tools in methods that could be called from scripts using regexp and "
     "wildcards.",
-    author = "Sergi Rubio",
+    author="Sergi Rubio",
     author_email="srubio@cells.es",
     classifiers=[
         'Development Status :: 5 - Production/Stable',
