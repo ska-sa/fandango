@@ -26,4 +26,6 @@ setup(
         'Topic :: Software Development :: Libraries',
     ],
     platforms=[ "Linux,Windows XP/Vista/7/8" ],
-    install_requires=['PyTango>=8'])
+    install_requires=['PyTango>=8'],
+    include_package_data=True,
+    zip_safe=False)
